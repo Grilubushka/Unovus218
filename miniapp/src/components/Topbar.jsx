@@ -13,7 +13,7 @@ export function Topbar({ onToast }) {
         type="button"
         onClick={() => onToast("Прокоины начисляются за темы, практику, тесты и серию дней.")}
       >
-        ⚡ 128
+        128
       </button>
     </header>
   );

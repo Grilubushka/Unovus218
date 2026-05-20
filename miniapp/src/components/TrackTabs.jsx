@@ -9,14 +9,14 @@ const TRACK_TABS = [
 export function TrackTabs({ activeProfile, onChange }) {
   return (
     <>
-      <SectionHead title="Демо-треки" subtitle="показывают универсальность" />
-      <div className="tabs">
+      <SectionHead title="План изучения" subtitle="" />
+      {/* <div className="tabs">
         {TRACK_TABS.map(([key, label]) => (
           <button key={key} className={`tab ${activeProfile === key ? "active" : ""}`} type="button" onClick={() => onChange(key)}>
             {label}
           </button>
         ))}
-      </div>
+      </div> */}
     </>
   );
 }
