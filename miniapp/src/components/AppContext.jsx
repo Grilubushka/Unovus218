@@ -1,16 +1,16 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState, useEffect } from "react";
 import { RoadmapRepository } from "../infrastructure/roadmapRepository.js";
 
 const AppContext = createContext(null);
 const repository = new RoadmapRepository();
 
 export function AppProvider({ children }) {
-  const [activeProfile, setActiveProfile] = useState("programming");
+  const [activeProfile, setActiveProfile] = useState("python");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
   const [toast, setToast] = useState("");
 
   const roadmap = useMemo(() => repository.getRoadmap(activeProfile), [activeProfile]);
-  const topics = useMemo(() => roadmap.modules.flatMap((m) => m.sections).flatMap((s) => s.topics), [roadmap]);
+  const topics = useMemo(() => roadmap?.modules?.flatMap((m) => m.sections).flatMap((s) => s.topics) ?? [], [roadmap]);
   const currentTopic = topics.find((t) => t.progress > 0 && t.progress < 100) ?? topics[0];
   const selectedTopic = topics.find((t) => t.id === selectedTopicId);
 
@@ -30,7 +30,17 @@ export function AppProvider({ children }) {
   }
 
   return (
-    <AppContext.Provider value={{ roadmap, currentTopic, selectedTopic, activeProfile, toast, showToast, openCurrentTopic, changeProfile, setSelectedTopicId }}>
+    <AppContext.Provider value={{ 
+      roadmap, 
+      currentTopic,  
+      selectedTopic,
+      activeProfile, 
+      toast, 
+      showToast, 
+      openCurrentTopic, 
+      changeProfile, 
+      setSelectedTopicId 
+    }}>
       {children}
     </AppContext.Provider>
   );

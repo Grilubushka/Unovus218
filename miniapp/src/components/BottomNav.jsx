@@ -9,7 +9,7 @@ export function BottomNav() {
   return (
     <nav className="bottom-nav" aria-label="Навигация">
       <button className={pathname === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
-        AI<span>Помощник</span>
+        AI<span>Профиль</span>
       </button>
       <button className={pathname === "/roadmap" ? "active" : ""} type="button" onClick={() => navigate("/roadmap")}>
         🔍︎<span>Карта</span>
