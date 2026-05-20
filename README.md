@@ -27,7 +27,7 @@ python -m bot.setup_telegram
 Основной бот использует SQLite-базу старого онбординга:
 
 ```env
-DATABASE_PATH=TrueTechTelegram/data/bot.sqlite3
+DATABASE_PATH=data/bot.sqlite3
 ```
 
 В неё пишутся пользователи, сессии квиза, ответы и события. Второй шаг онбординга также читает из этой базы популярные пользовательские ответы и подмешивает их в TOP-10. В Docker путь переопределяется на `/app/data/bot.sqlite3`, чтобы база жила в volume контейнера.

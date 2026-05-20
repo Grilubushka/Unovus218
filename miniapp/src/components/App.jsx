@@ -17,7 +17,7 @@ import { TrackTabs } from "./TrackTabs.jsx";
 export function App() {
   const { user: telegramUser } = useTelegramWebApp();
 
-  const [activeProfile, setActiveProfile] = useState("programming");
+  const [activeProfile, setActiveProfile] = useState("python");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
   const [view, setView] = useState("map");
   const [toast, setToast] = useState("");

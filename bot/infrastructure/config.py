@@ -2,9 +2,11 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def load_dotenv(path: str = ".env") -> None:
-    env_path = Path(path)
+    env_path = resolve_project_path(path)
     if not env_path.exists():
         return
     for line in env_path.read_text(encoding="utf-8").splitlines():
@@ -20,8 +22,8 @@ class Settings:
         load_dotenv()
         self.bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         self.miniapp_url = os.environ.get("MINIAPP_URL", "")
-        self.state_file = os.environ.get("STATE_FILE", "bot_state.json")
-        self.database_path = os.environ.get("DATABASE_PATH", default_database_path())
+        self.state_file = str(resolve_project_path(os.environ.get("STATE_FILE", "bot_state.json")))
+        self.database_path = str(resolve_project_path(os.environ.get("DATABASE_PATH", default_database_path())))
 
     def validate(self) -> None:
         if not self.bot_token:
@@ -50,7 +52,11 @@ def validate_public_https_url(url: str) -> None:
 
 
 def default_database_path() -> str:
-    old_onboarding_db = Path("TrueTechTelegram/data/bot.sqlite3")
-    if old_onboarding_db.exists():
-        return str(old_onboarding_db)
     return "data/bot.sqlite3"
+
+
+def resolve_project_path(path: str) -> Path:
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    return PROJECT_ROOT / candidate

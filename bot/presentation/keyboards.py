@@ -55,5 +55,31 @@ def miniapp_keyboard(miniapp_url: str) -> dict:
     rows: list[list[dict]] = []
     if miniapp_url:
         rows.append([{"text": "Открыть Mini App", "web_app": {"url": miniapp_url}}])
+    rows.append([callback_button("Мои маршруты", "routes:list:0")])
     rows.append([callback_button("↻ Собрать заново", "quiz:start")])
+    return inline_keyboard(rows)
+
+
+def routes_keyboard(
+    *,
+    page: int,
+    total: int,
+    miniapp_url: str,
+    route_id: int | None = None,
+) -> dict:
+    rows: list[list[dict]] = []
+    if miniapp_url:
+        rows.append([{"text": "Открыть в Mini App", "web_app": {"url": miniapp_url}}])
+
+    nav_row: list[dict] = []
+    if total > 1:
+        nav_row.append(callback_button("←", f"routes:page:{max(page - 1, 0)}"))
+        nav_row.append(callback_button(f"{page + 1}/{total}", f"routes:page:{page}"))
+        nav_row.append(callback_button("→", f"routes:page:{min(page + 1, total - 1)}"))
+    if nav_row:
+        rows.append(nav_row)
+
+    if route_id is not None:
+        rows.append([callback_button("Подробнее", f"routes:detail:{route_id}:{page}")])
+    rows.append([callback_button("↻ Собрать новый", "quiz:start")])
     return inline_keyboard(rows)

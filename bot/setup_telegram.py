@@ -14,6 +14,7 @@ def main() -> None:
             "commands": json.dumps(
                 [
                     {"command": "start", "description": "пройти онбординг"},
+                    {"command": "routes", "description": "листать мои маршруты"},
                     {"command": "app", "description": "открыть Mini App"},
                     {"command": "restart", "description": "начать заново"},
                     {"command": "debug", "description": "показать Mini App URL"},

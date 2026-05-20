@@ -401,10 +401,99 @@ class OnboardingDatabase:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def create_course_session(
+        self,
+        *,
+        user_id: int,
+        quiz_session_id: int | None,
+        profile: dict[str, str],
+        route: list[dict[str, Any]],
+    ) -> int:
+        cursor = self._db().execute(
+            """
+            INSERT INTO course_sessions (
+                telegram_user_id,
+                quiz_session_id,
+                status,
+                current_module,
+                total_modules,
+                profile_json,
+                route_json
+            )
+            VALUES (?, ?, 'active', 0, ?, ?, ?)
+            """,
+            (user_id, quiz_session_id, len(route), self._json(profile), self._json(route)),
+        )
+        self._db().commit()
+        return int(cursor.lastrowid)
+
+    def list_active_routes(self, user_id: int) -> list[dict[str, Any]]:
+        rows = self._db().execute(
+            """
+            SELECT
+                id,
+                telegram_user_id,
+                quiz_session_id,
+                status,
+                current_module,
+                total_modules,
+                profile_json,
+                route_json,
+                started_at,
+                updated_at
+            FROM course_sessions
+            WHERE telegram_user_id = ?
+              AND status IN ('active', 'started', 'completed')
+            ORDER BY updated_at DESC, id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+        return [self._course_row(row) for row in rows]
+
+    def get_course_session(self, course_id: int, user_id: int | None = None) -> dict[str, Any] | None:
+        query = """
+            SELECT
+                id,
+                telegram_user_id,
+                quiz_session_id,
+                status,
+                current_module,
+                total_modules,
+                profile_json,
+                route_json,
+                started_at,
+                updated_at
+            FROM course_sessions
+            WHERE id = ?
+        """
+        params: tuple[Any, ...] = (course_id,)
+        if user_id is not None:
+            query += " AND telegram_user_id = ?"
+            params = (course_id, user_id)
+
+        row = self._db().execute(query, params).fetchone()
+        return self._course_row(row) if row is not None else None
+
     def _db(self) -> sqlite3.Connection:
         if self.connection is None:
             raise RuntimeError("База данных онбординга не подключена.")
         return self.connection
+
+    def _course_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        route = self._loads_value(row["route_json"], [])
+        return {
+            "id": row["id"],
+            "telegram_user_id": row["telegram_user_id"],
+            "quiz_session_id": row["quiz_session_id"],
+            "status": row["status"],
+            "current_module": row["current_module"],
+            "total_modules": row["total_modules"],
+            "profile": self._loads(row["profile_json"]),
+            "route": route if isinstance(route, list) else [],
+            "started_at": row["started_at"],
+            "updated_at": row["updated_at"],
+        }
 
     @staticmethod
     def _json(value: Any) -> str:
@@ -417,3 +506,10 @@ class OnboardingDatabase:
         except json.JSONDecodeError:
             return {}
         return loaded if isinstance(loaded, dict) else {}
+
+    @staticmethod
+    def _loads_value(value: str, fallback: Any) -> Any:
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return fallback

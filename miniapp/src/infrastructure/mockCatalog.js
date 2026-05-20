@@ -1,117 +1,126 @@
 export const demoProfiles = {
-  programming: {
-    goal: "Хочу научиться программировать",
+  python: {
+    routeId: 101,
+    goal: "Научиться писать полезные Python-скрипты",
     direction: "programming",
-    age: 16,
-    result: "project",
+    age: 18,
+    result: "first_project",
     experience: "none",
     weeklyTime: 4,
     motivation: "try",
-    formats: ["video", "practice"],
+    formats: ["video", "practice", "article"],
   },
   english: {
-    goal: "Нужен английский для поездки",
+    routeId: 102,
+    goal: "Подготовиться к поездке и базовым диалогам",
     direction: "english",
     age: 20,
     result: "try_fast",
     experience: "beginner",
     weeklyTime: 3,
-    motivation: "try",
-    formats: ["video", "article"],
-  },
-  cooking: {
-    goal: "Хочу готовить простые ужины",
-    direction: "cooking",
-    age: 25,
-    result: "project",
-    experience: "none",
-    weeklyTime: 2,
     motivation: "support",
-    formats: ["video", "practice"],
+    formats: ["audio", "article", "practice"],
+  },
+  design: {
+    routeId: 103,
+    goal: "Собрать первый экран в Figma для портфолио",
+    direction: "design",
+    age: 24,
+    result: "project",
+    experience: "beginner",
+    weeklyTime: 5,
+    motivation: "career",
+    formats: ["video", "course", "practice"],
   },
 };
 
-export const catalog = {
-  domains: [
-    { slug: "programming", title: "Программирование" },
-    { slug: "english", title: "Английский язык" },
-    { slug: "cooking", title: "Кулинария" },
+export const sampleData = {
+  routes: [
+    route(101, 1, "Научиться писать полезные Python-скрипты", "active", "beginner", 390, "Маршрут ведёт от запуска Python к первому автоматизированному скрипту.", [1, 2, 3, 4, 5]),
+    route(102, 1, "Английский для поездки", "active", "beginner", 300, "Маршрут собирает фразы, аудирование и безопасную практику для поездки.", [6, 7, 8, 9]),
+    route(103, 2, "Первый экран в Figma", "verified", "intermediate", 420, "Маршрут помогает собрать портфолио-экран: референсы, сетка, компоненты и презентация.", [10, 11, 12, 13, 14]),
   ],
-  tracks: [
-    { slug: "python-zero", domainSlug: "programming", title: "Python с нуля", duration: "5-6 недель" },
-    { slug: "frontend-zero", domainSlug: "programming", title: "Frontend с нуля", duration: "6-7 недель" },
-    { slug: "english-travel", domainSlug: "english", title: "Английский для путешествий", duration: "4-5 недель" },
-    { slug: "home-dinners", domainSlug: "cooking", title: "Домашние ужины с нуля", duration: "3-4 недели" },
+  materials: [
+    material(1, "Установка Python и редактора", "https://docs.python.org/ru/3/using/index.html", "article", "published", "ru", "Старт", "Как поставить Python, проверить версию и запустить первый файл.", "beginner", 25, 0.88, 0.94, [], ["Как проверить установленную версию Python?"]),
+    material(2, "Переменные, строки и числа", "https://pythonworld.ru/tipy-dannyx-v-python/stroki-funkcii-i-metody-strok.html", "article", "published", "ru", "База языка", "Короткая база по значениям, переменным и простым операциям.", "beginner", 35, 0.84, 0.91, ["Установка Python"], ["Чем строка отличается от числа?"]),
+    material(3, "Условия и циклы на примерах", "https://stepik.org/course/67", "course", "published", "ru", "Логика", "Практический блок по if, for и while с задачами.", "beginner", 90, 0.9, 0.88, ["Переменные"], ["Когда нужен цикл?"]),
+    material(4, "Работа с файлами CSV", "https://docs.python.org/ru/3/library/csv.html", "article", "published", "ru", "Данные", "Мини-справочник для чтения и записи таблиц.", "intermediate", 45, 0.82, 0.86, ["Условия и циклы"], ["Что такое строка CSV?"]),
+    material(5, "Мини-проект: личный трекер расходов", "https://github.com/topics/python-beginner-projects", "mixed", "published", "ru", "Проект", "Проектный шаблон: чтение CSV, подсчёт сумм и вывод отчёта.", "beginner", 120, 0.86, 0.93, ["Работа с файлами"], ["Какой результат должен вывести скрипт?"]),
+    material(6, "Survival English: стартовые фразы", "https://learnenglish.britishcouncil.org/general-english/video-zone", "video", "published", "ru", "Фразы", "Базовые фразы приветствия, просьбы и уточнения.", "beginner", 40, 0.8, 0.9, [], ["Как попросить помощи?"]),
+    material(7, "Аэропорт и багаж", "https://www.bbc.co.uk/learningenglish", "audio", "published", "ru", "Поездка", "Аудирование и словарь для регистрации, багажа и посадки.", "beginner", 55, 0.83, 0.89, ["Стартовые фразы"], ["Что значит boarding pass?"]),
+    material(8, "Отель: бронирование и проблемы", "https://www.englishclub.com/english-for-work/hotel.htm", "article", "published", "ru", "Сервис", "Диалоги для заселения, просьб и решения бытовых проблем.", "beginner", 65, 0.79, 0.87, ["Стартовые фразы"], ["Как попросить другой номер?"]),
+    material(9, "Ролевые карточки для поездки", "https://www.teachingenglish.org.uk/resources", "mixed", "published", "ru", "Практика", "Карточки ситуаций: кафе, транспорт, отель, магазин.", "beginner", 140, 0.86, 0.92, ["Аэропорт", "Отель"], ["Как проверить себя без преподавателя?"]),
+    material(10, "Figma: интерфейс и файлы", "https://help.figma.com/hc/en-us", "video", "published", "ru", "Инструмент", "Быстрый вход в интерфейс Figma, страницы, фреймы и экспорт.", "beginner", 50, 0.83, 0.88, [], ["Что такое frame?"]),
+    material(11, "Сетка и визуальная иерархия", "https://material.io/design/layout/responsive-layout-grid.html", "article", "published", "ru", "Композиция", "Как выстроить экран, чтобы он читался и не разваливался.", "intermediate", 70, 0.87, 0.91, ["Интерфейс Figma"], ["Зачем нужна сетка?"]),
+    material(12, "Компоненты и варианты", "https://help.figma.com/hc/en-us/articles/360038662654", "course", "published", "ru", "Система", "Компоненты, варианты, свойства и повторное использование.", "intermediate", 90, 0.89, 0.9, ["Сетка"], ["Когда делать компонент?"]),
+    material(13, "Практика: экран каталога курсов", "https://www.figma.com/community", "mixed", "published", "ru", "Проект", "Собрать экран каталога с карточками, фильтрами и состоянием выбора.", "intermediate", 150, 0.84, 0.94, ["Компоненты"], ["Какие состояния нужны карточке?"]),
+    material(14, "Презентация кейса", "https://www.nngroup.com/articles/ux-case-study/", "article", "published", "ru", "Портфолио", "Как описать задачу, ограничения, решения и результат для портфолио.", "intermediate", 60, 0.82, 0.86, ["Экран каталога"], ["Что показать в кейсе?"]),
   ],
-  modules: [
-    { id: "py-m1", trackSlug: "python-zero", title: "Модуль 1. Введение", goal: "Понять, как работает простая программа" },
-    { id: "py-m2", trackSlug: "python-zero", title: "Модуль 2. Логика кода", goal: "Научиться управлять поведением программы" },
-    { id: "py-m3", trackSlug: "python-zero", title: "Модуль 3. Мини-проект", goal: "Собрать первый полезный скрипт" },
-    { id: "en-m1", trackSlug: "english-travel", title: "Модуль 1. База поездки", goal: "Собрать фразы для первых ситуаций" },
-    { id: "en-m2", trackSlug: "english-travel", title: "Модуль 2. Город и сервисы", goal: "Объясняться в транспорте, кафе и отеле" },
-    { id: "cook-m1", trackSlug: "home-dinners", title: "Модуль 1. Безопасная кухня", goal: "Уверенно подготовить продукты и рабочее место" },
-    { id: "cook-m2", trackSlug: "home-dinners", title: "Модуль 2. Простые ужины", goal: "Готовить базовые блюда без стресса" },
-  ],
-  sections: [
-    { id: "py-s1", moduleId: "py-m1", title: "Первые шаги" },
-    { id: "py-s2", moduleId: "py-m2", title: "Условия и циклы" },
-    { id: "py-s3", moduleId: "py-m3", title: "Проектная сборка" },
-    { id: "en-s1", moduleId: "en-m1", title: "Стартовые диалоги" },
-    { id: "en-s2", moduleId: "en-m2", title: "Ситуации в поездке" },
-    { id: "cook-s1", moduleId: "cook-m1", title: "Основа безопасности" },
-    { id: "cook-s2", moduleId: "cook-m2", title: "Техники и блюда" },
-  ],
-  topics: [
-    topic("py-t1", "py-s1", "Что такое программа", 100, ["алгоритм", "команда", "результат"]),
-    topic("py-t2", "py-s1", "Запуск Python", 100, ["интерпретатор", "редактор", "ошибки"]),
-    topic("py-t3", "py-s1", "Переменные", 40, ["значения", "имена", "вывод"]),
-    topic("py-t4", "py-s1", "Типы данных", 0, ["int", "str", "bool"]),
-    topic("py-t5", "py-s2", "Условия", 15, ["if", "else", "сравнения"]),
-    topic("py-t6", "py-s2", "Циклы", 40, ["for", "while", "range"]),
-    topic("py-t7", "py-s3", "Мини-проект", 0, ["структура", "портфолио", "самопроверка"]),
-    topic("en-t1", "en-s1", "Приветствие и просьбы", 60, ["hello", "please", "help"]),
-    topic("en-t2", "en-s1", "Аэропорт", 20, ["check-in", "gate", "luggage"]),
-    topic("en-t3", "en-s2", "Отель", 0, ["booking", "room", "problem"]),
-    topic("en-t4", "en-s2", "Кафе и транспорт", 0, ["order", "ticket", "route"]),
-    topic("cook-t1", "cook-s1", "Нож и доска", 30, ["нарезка", "безопасность", "темп"]),
-    topic("cook-t2", "cook-s1", "Тепловая обработка", 0, ["варка", "жарка", "запекание"]),
-    topic("cook-t3", "cook-s2", "Ужин из крупы и белка", 0, ["гарнир", "белок", "соус"]),
-    topic("cook-t4", "cook-s2", "План меню на неделю", 0, ["закупка", "хранение", "экономия"]),
-  ],
-  materials: [],
 };
 
-catalog.materials = catalog.topics.flatMap((item) => [
-  material(`${item.id}-video`, item.id, "video", `Короткое видео: ${item.title}`, "YouTube / VK Видео", 12, false, 0.86),
-  material(`${item.id}-practice`, item.id, "practice", `Практика: ${item.title}`, "Открытый тренажёр", 18, true, 0.91),
-  material(`${item.id}-quiz`, item.id, "quiz", `Мини-тест: ${item.title}`, "Самопроверка", 7, true, 0.82),
-]);
-
-function topic(id, sectionId, title, progress, skills) {
+function route(id, userId, goal, status, difficulty, totalDurationMinutes, explanation, materialIds) {
   return {
     id,
-    sectionId,
-    title,
-    progress,
-    skills,
-    importance: "core",
-    description: `${title} помогает закрыть обязательную часть маршрута и перейти к следующему шагу без лишней теории.`,
-    competency: `После темы пользователь сможет применять: ${skills.join(", ")}.`,
+    user_id: userId,
+    goal,
+    status,
+    difficulty,
+    total_duration_minutes: totalDurationMinutes,
+    explanation,
+    verification_report: {
+      sample: true,
+      source: "route.py/material.py schema",
+      checks: ["ordered_materials", "difficulty_match", "published_only"],
+    },
+    items: materialIds.map((materialId, index) => ({
+      id: id * 100 + index + 1,
+      route_id: id,
+      material_id: materialId,
+      position: index + 1,
+      reason: reasonFor(index),
+      expected_outcome: outcomeFor(index),
+    })),
   };
 }
 
-function material(id, topicId, format, title, source, minutes, hasPractice, quality) {
+function material(id, title, url, format, status, language, topic, summary, difficulty, durationMinutes, qualityScore, routeFitScore, prerequisites, checkQuestions) {
   return {
     id,
-    topicId,
-    format,
+    source_id: null,
     title,
-    source,
-    minutes,
-    hasPractice,
-    language: "ru",
-    isFree: true,
-    level: "beginner",
-    quality,
+    url,
+    format,
+    status,
+    language,
+    topic,
+    summary,
+    difficulty,
+    duration_minutes: durationMinutes,
+    quality_score: qualityScore,
+    route_fit_score: routeFitScore,
+    prerequisites,
+    check_questions: checkQuestions.map((question) => ({ question })),
+    analysis: { summary, route_fit_score: routeFitScore },
+    is_published: status === "published",
   };
+}
+
+function reasonFor(index) {
+  return [
+    "Закрывает стартовую точку и снижает риск застрять на настройке.",
+    "Даёт минимальную теорию, без которой практика будет механической.",
+    "Переводит знания в повторяемое действие.",
+    "Добавляет прикладной сценарий и проверку результата.",
+    "Фиксирует итоговый артефакт маршрута.",
+  ][index] ?? "Усиливает следующий шаг маршрута.";
+}
+
+function outcomeFor(index) {
+  return [
+    "Пользователь готов начать маршрут без технических блокеров.",
+    "Появляется словарь базовых понятий.",
+    "Пользователь решает простые задачи самостоятельно.",
+    "Появляется прикладной мини-навык.",
+    "Собран результат, который можно показать.",
+  ][index] ?? "Понятен следующий шаг.";
 }
