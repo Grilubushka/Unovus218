@@ -11,8 +11,7 @@ services:
       DATABASE_PATH: /app/data/bot.sqlite3
       # Поставь true один раз после настройки MINIAPP_URL, чтобы обновить команды и кнопку Mini App.
       SETUP_TELEGRAM: "false"
-    ports:
-      - "8080:8080"
+    network_mode: host
     volumes:
       - progressors_bot_data:/app/data
 

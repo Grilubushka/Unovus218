@@ -25,7 +25,7 @@ class Settings:
         self.miniapp_url = os.environ.get("MINIAPP_URL", "")
         self.state_file = str(resolve_project_path(os.environ.get("STATE_FILE", "bot_state.json")))
         self.database_path = str(resolve_project_path(os.environ.get("DATABASE_PATH", default_database_path())))
-        self.llm_onboarding_enabled = parse_bool(os.environ.get("LLM_ONBOARDING_ENABLED", "true"))
+        self.llm_onboarding_enabled = parse_bool(os.environ.get("LLM_ONBOARDING_ENABLED", "false"))
         self.llm_agent_access_id = os.environ.get("LLM_AGENT_ACCESS_ID", DEFAULT_LLM_AGENT_ACCESS_ID)
         default_llm_base_url = f"https://agent.timeweb.cloud/api/v1/cloud-ai/agents/{self.llm_agent_access_id}/v1"
         self.llm_agent_base_url = os.environ.get("LLM_AGENT_BASE_URL", default_llm_base_url)

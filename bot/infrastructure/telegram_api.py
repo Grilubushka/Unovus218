@@ -1,9 +1,10 @@
 import json
 import socket
+import time
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 
 class TelegramApi:
@@ -52,12 +53,23 @@ class TelegramApi:
     def _request(self, method: str, payload: dict) -> dict:
         data = urllib.parse.urlencode(payload).encode("utf-8")
         request = urllib.request.Request(f"{self.base_url}/{method}", data=data)
-        try:
-            with force_ipv4_dns(), urllib.request.urlopen(request, timeout=40) as response:
-                body = response.read().decode("utf-8")
-        except HTTPError as error:
-            body = error.read().decode("utf-8")
-            raise RuntimeError(f"Telegram API {method} failed: HTTP {error.code}: {body}") from error
+        body = ""
+        last_error: BaseException | None = None
+        for attempt in range(3):
+            try:
+                with force_ipv4_dns(), urllib.request.urlopen(request, timeout=25) as response:
+                    body = response.read().decode("utf-8")
+                break
+            except HTTPError as error:
+                body = error.read().decode("utf-8")
+                raise RuntimeError(f"Telegram API {method} failed: HTTP {error.code}: {body}") from error
+            except (TimeoutError, URLError, OSError) as error:
+                last_error = error
+                if attempt == 2:
+                    raise RuntimeError(f"Telegram API {method} failed after retries: {error}") from error
+                time.sleep(1.5 * (attempt + 1))
+        if not body:
+            raise RuntimeError(f"Telegram API {method} failed: {last_error}")
         result = json.loads(body)
         if not result.get("ok"):
             raise RuntimeError(result)
