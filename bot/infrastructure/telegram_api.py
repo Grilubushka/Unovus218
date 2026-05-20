@@ -15,7 +15,7 @@ class TelegramApi:
         params = {"timeout": timeout, "allowed_updates": json.dumps(["message", "callback_query"])}
         if offset is not None:
             params["offset"] = offset
-        return self._request("getUpdates", params).get("result", [])
+        return self._request("getUpdates", params, timeout=timeout + 20, retries=1).get("result", [])
 
     def send_message(
         self,
@@ -48,16 +48,21 @@ class TelegramApi:
         return result if isinstance(result, dict) else {}
 
     def answer_callback(self, callback_query_id: str, text: str = "") -> None:
-        self._request("answerCallbackQuery", {"callback_query_id": callback_query_id, "text": text})
+        try:
+            self._request("answerCallbackQuery", {"callback_query_id": callback_query_id, "text": text}, timeout=8, retries=1)
+        except RuntimeError as error:
+            if "query is too old" in str(error).lower() or "query id is invalid" in str(error).lower():
+                return
+            raise
 
-    def _request(self, method: str, payload: dict) -> dict:
+    def _request(self, method: str, payload: dict, *, timeout: int = 25, retries: int = 3) -> dict:
         data = urllib.parse.urlencode(payload).encode("utf-8")
         request = urllib.request.Request(f"{self.base_url}/{method}", data=data)
         body = ""
         last_error: BaseException | None = None
-        for attempt in range(3):
+        for attempt in range(retries):
             try:
-                with force_ipv4_dns(), urllib.request.urlopen(request, timeout=25) as response:
+                with force_ipv4_dns(), urllib.request.urlopen(request, timeout=timeout) as response:
                     body = response.read().decode("utf-8")
                 break
             except HTTPError as error:
@@ -65,7 +70,7 @@ class TelegramApi:
                 raise RuntimeError(f"Telegram API {method} failed: HTTP {error.code}: {body}") from error
             except (TimeoutError, URLError, OSError) as error:
                 last_error = error
-                if attempt == 2:
+                if attempt == retries - 1:
                     raise RuntimeError(f"Telegram API {method} failed after retries: {error}") from error
                 time.sleep(1.5 * (attempt + 1))
         if not body:

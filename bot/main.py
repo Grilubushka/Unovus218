@@ -74,12 +74,22 @@ def main() -> None:
 
     try:
         while True:
-            for update in api.get_updates(offset=offset):
+            try:
+                updates = api.get_updates(offset=offset)
+            except RuntimeError as error:
+                print(f"Telegram getUpdates skipped: {error}")
+                time.sleep(2)
+                continue
+
+            for update in updates:
                 offset = update["update_id"] + 1
-                if "message" in update:
-                    handle_message(api, store, database, settings, update["message"])
-                elif "callback_query" in update:
-                    handle_callback(api, store, database, settings, update["callback_query"])
+                try:
+                    if "message" in update:
+                        handle_message(api, store, database, settings, update["message"])
+                    elif "callback_query" in update:
+                        handle_callback(api, store, database, settings, update["callback_query"])
+                except Exception as error:
+                    print(f"Telegram update {update.get('update_id')} skipped: {error}")
     finally:
         database.close()
 
