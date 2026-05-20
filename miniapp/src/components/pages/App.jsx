@@ -14,6 +14,7 @@ export function App() {
     loading,
     markTopic,
     openCurrentTopic,
+    rebuildTopicRoute,
     roadmap,
     saveTopicFeedback,
     selectedTopic,
@@ -39,6 +40,7 @@ export function App() {
           onClose={() => setSelectedTopicId(null)}
           onFeedback={saveTopicFeedback}
           onMarkModule={markTopic}
+          onRebuildRoute={rebuildTopicRoute}
           onToast={showToast}
         />
       )}

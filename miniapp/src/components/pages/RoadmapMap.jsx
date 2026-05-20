@@ -7,7 +7,7 @@ import { TopicSheet } from "../TopicSheet.jsx";
 import { useRef, useEffect } from "react";
 
 export function RoadmapMap() {
-  const { markTopic, roadmap, saveTopicFeedback, selectedTopic, toast, showToast, setSelectedTopicId } = useApp();
+  const { markTopic, rebuildTopicRoute, roadmap, saveTopicFeedback, selectedTopic, toast, showToast, setSelectedTopicId } = useApp();
   const containerRef = useRef(null);
   const lastTopicRef = useRef(null);
 
@@ -57,6 +57,7 @@ export function RoadmapMap() {
           onClose={() => setSelectedTopicId(null)}
           onFeedback={saveTopicFeedback}
           onMarkModule={markTopic}
+          onRebuildRoute={rebuildTopicRoute}
           onToast={showToast}
         />
       )}

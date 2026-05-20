@@ -9,6 +9,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from bot.domain.route_builder import build_personal_route
+
 
 class MiniAppDataRepository:
     def __init__(self, database_path: str) -> None:
@@ -97,8 +99,93 @@ class MiniAppDataRepository:
                 return {"ok": False, "error": "course_not_found"}
             user_id = int(telegram_user_id or course["telegram_user_id"])
             self._save_module_event(db, course_id, user_id, module_index, "module_feedback", {"feedback": feedback})
+            rebuilt = False
+            if feedback in {"replace", "hard", "too_hard", "easy", "too_easy", "bad_format"}:
+                self._rebuild_course_route(db, course, feedback)
+                self._save_module_event(
+                    db,
+                    course_id,
+                    user_id,
+                    module_index,
+                    "route_rebuilt",
+                    {"reason": feedback, "source": "feedback"},
+                )
+                rebuilt = True
+            db.commit()
+        return {"ok": True, "rebuilt": rebuilt}
+
+    def rebuild_roadmap(
+        self,
+        course_id: int | None = None,
+        telegram_user_id: int | None = None,
+        reason: str = "manual",
+    ) -> dict[str, Any]:
+        with self._connect() as db:
+            if not self._has_course_schema(db):
+                return {"ok": False, "error": "course_schema_missing"}
+
+            course = self._course_by_id(db, course_id) if course_id is not None else self._latest_course(db, telegram_user_id)
+            if course is None:
+                return {"ok": False, "error": "course_not_found"}
+
+            user_id = int(telegram_user_id or course["telegram_user_id"])
+            self._rebuild_course_route(db, course, reason)
+            self._save_module_event(
+                db,
+                int(course["id"]),
+                user_id,
+                int(course["current_module"] or 0),
+                "route_rebuilt",
+                {"reason": reason, "source": "miniapp"},
+            )
             db.commit()
         return {"ok": True}
+
+    def admin_summary(self) -> dict[str, Any]:
+        with self._connect() as db:
+            if not self._has_course_schema(db):
+                return {"ok": True, "routes": [], "events": [], "chatMessages": 0}
+
+            routes = db.execute(
+                """
+                SELECT id, telegram_user_id, status, current_module, total_modules, profile_json, updated_at
+                FROM course_sessions
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 50
+                """
+            ).fetchall()
+            events = db.execute(
+                """
+                SELECT telegram_user_id, event_name, payload_json, created_at
+                FROM analytics_events
+                ORDER BY id DESC
+                LIMIT 50
+                """
+            ).fetchall()
+            return {
+                "ok": True,
+                "routes": [
+                    {
+                        "id": row["id"],
+                        "telegram_user_id": row["telegram_user_id"],
+                        "status": row["status"],
+                        "progress": self._progress(row),
+                        "profile": self._loads(row["profile_json"], {}),
+                        "updated_at": row["updated_at"],
+                    }
+                    for row in routes
+                ],
+                "events": [
+                    {
+                        "telegram_user_id": row["telegram_user_id"],
+                        "event_name": row["event_name"],
+                        "payload": self._loads(row["payload_json"], {}),
+                        "created_at": row["created_at"],
+                    }
+                    for row in events
+                ],
+                "chatMessages": self._table_count(db, "chat_messages"),
+            }
 
     def upload_certificate(self, payload: dict[str, Any], telegram_user_id: int | None = None) -> dict[str, Any]:
         with self._connect() as db:
@@ -316,6 +403,7 @@ class MiniAppDataRepository:
             "source": material.get("source") or "Открытый русскоязычный источник",
             "duration": material.get("duration") or "",
             "interaction": material.get("interaction") or "",
+            "url": material.get("url") or "",
             "isFree": True,
             "language": "ru",
         }
@@ -409,6 +497,50 @@ class MiniAppDataRepository:
             """,
             (course_id, user_id, module_index, event_name, json.dumps(payload, ensure_ascii=False)),
         )
+
+    @staticmethod
+    def _rebuild_course_route(db: sqlite3.Connection, course: sqlite3.Row, reason: str) -> None:
+        profile = MiniAppDataRepository._loads(course["profile_json"], {})
+        previous_route = MiniAppDataRepository._loads(course["route_json"], [])
+        route = build_personal_route(profile, reason=reason, previous_route=previous_route)
+        db.execute(
+            """
+            UPDATE course_sessions
+            SET route_json = ?,
+                total_modules = ?,
+                current_module = MIN(current_module, ?),
+                status = CASE WHEN status = 'completed' THEN 'active' ELSE status END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                json.dumps(route, ensure_ascii=False),
+                len(route),
+                max(len(route) - 1, 0),
+                int(course["id"]),
+            ),
+        )
+
+    @staticmethod
+    def _progress(row: sqlite3.Row) -> int:
+        total = max(int(row["total_modules"] or 1), 1)
+        current = int(row["current_module"] or 0)
+        return 100 if row["status"] == "completed" else round(current / total * 100)
+
+    @staticmethod
+    def _table_count(db: sqlite3.Connection, table_name: str) -> int:
+        row = db.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = ?
+            """,
+            (table_name,),
+        ).fetchone()
+        if row is None:
+            return 0
+        count = db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+        return int(count[0]) if count is not None else 0
 
     @staticmethod
     def _resolve_certificate_user_id(db: sqlite3.Connection, telegram_user_id: int | None) -> int:

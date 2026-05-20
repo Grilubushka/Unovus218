@@ -42,6 +42,10 @@ export class ApiRoadmapRepository {
     return postJson("/api/feedback", { courseId, moduleIndex, feedback, telegramUserId });
   }
 
+  async rebuildRoadmap({ courseId, reason, telegramUserId }) {
+    return postJson("/api/roadmap/rebuild", { courseId, reason, telegramUserId });
+  }
+
   async uploadCertificate({ file, telegramUserId }) {
     const dataUrl = await fileToDataUrl(file);
     const result = await postJson("/api/certificates/upload", {

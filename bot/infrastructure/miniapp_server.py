@@ -23,15 +23,29 @@ class MiniAppRequestHandler(SimpleHTTPRequestHandler):
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)}, status=500)
             return
+        if parsed.path in {"/api/admin/summary", "/api/admin/routes", "/api/admin/onboarding-payloads"}:
+            try:
+                self.send_json(self.repository.admin_summary())
+            except Exception as error:
+                self.send_json({"ok": False, "error": str(error)}, status=500)
+            return
         super().do_GET()
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in {"/api/progress/mark", "/api/feedback", "/api/certificates/upload"}:
+        if parsed.path not in {"/api/progress/mark", "/api/feedback", "/api/certificates/upload", "/api/roadmap/rebuild"}:
             self.send_error(404)
             return
 
         payload = self.read_json()
+        if parsed.path == "/api/roadmap/rebuild":
+            course_id = as_int(payload.get("courseId"))
+            user_id = as_int(payload.get("telegramUserId"))
+            reason = str(payload.get("reason") or "manual")
+            result = self.repository.rebuild_roadmap(course_id, user_id, reason)
+            self.send_json(result, status=200 if result.get("ok") else 404)
+            return
+
         if parsed.path == "/api/certificates/upload":
             try:
                 result = self.repository.upload_certificate(payload, as_int(payload.get("telegramUserId")))

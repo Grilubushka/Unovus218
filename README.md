@@ -1,98 +1,78 @@
-# Telegram bot + Mini App: образовательные маршруты
+# Unovus 218: Telegram Bot + Mini App
 
-В репозитории подготовлен прототип Telegram-бота и React Mini App для конструктора персональных маршрутов обучения. Бот является основной точкой входа: проводит онбординг, сохраняет профиль пользователя и открывает Mini App кнопкой `web_app`. Построение маршрута, прогресс и работа с материалами находятся в Mini App.
+Прототип Telegram-бота и Telegram Mini App для построения персональных образовательных маршрутов. Версия работает без подключенного ИИ: профиль собирается в чате, маршрут строится детерминированным алгоритмом из мокового каталога бесплатных русскоязычных материалов, прогресс и обратная связь сохраняются в SQLite.
 
-## Запуск
+## Что уже умеет
 
-### Локально
+- Бот собирает профиль пользователя через диалог.
+- Все данные чата пишутся в SQLite: состояние диалога, сообщения, callback-кнопки, ответы анкеты.
+- После онбординга создается `course_session` с персональным маршрутом.
+- Mini App читает маршрут из БД через API и показывает интерактивную карту.
+- Темы маршрута кликабельны, материалы открываются по ссылкам.
+- Пользователь может отметить модуль пройденным.
+- Обратная связь `сложно / просто / заменить` перестраивает маршрут без ИИ.
+- Есть связь `бот -> БД -> Mini App -> БД`; админский контур может читать `/api/admin/summary`.
 
-1. Создать `.env` на основе `.env.example`.
-2. Положить туда токен BotFather и публичный HTTPS-адрес Mini App.
-3. Запустить бота:
+## Архитектура
+
+```text
+Telegram Bot
+  -> bot/main.py
+  -> bot/application: сценарий онбординга
+  -> bot/domain: построение маршрута без ИИ
+  -> bot/infrastructure: Telegram API, SQLite, Mini App API
+
+SQLite
+  -> users
+  -> chat_states
+  -> chat_messages
+  -> quiz_sessions
+  -> quiz_answers
+  -> course_sessions
+  -> course_module_events
+  -> user_certificates
+
+Telegram Mini App
+  -> React + Vite
+  -> /api/roadmap
+  -> /api/progress/mark
+  -> /api/feedback
+  -> /api/roadmap/rebuild
+```
+
+## Основные команды бота
+
+- `/start` — начать сбор профиля.
+- `/app` или `/roadmap` — открыть Mini App для готового маршрута.
+- `/routes` — посмотреть маршруты внутри чата.
+- `/debug` — проверить URL миниаппа и путь к БД.
+
+## Переменные окружения
+
+Создай `.env` на основе `.env.example`:
+
+```env
+TELEGRAM_BOT_TOKEN=replace_with_botfather_token
+MINIAPP_URL=https://your-domain.ru/
+DATABASE_PATH=data/bot.sqlite3
+LLM_ONBOARDING_ENABLED=false
+```
+
+`LLM_ONBOARDING_ENABLED=false` — нормальный режим для текущего прототипа. Когда появится реальный ИИ-агент, можно включить LLM и задать `LLM_AGENT_TOKEN`.
+
+## Локальный запуск
 
 ```powershell
 python -m bot.main
 ```
 
-Настроить команды и кнопку меню Mini App в Telegram:
+Отдельно можно проверить Mini App API:
 
 ```powershell
-python -m bot.setup_telegram
+python -m bot.infrastructure.miniapp_server
 ```
 
-Важно: токен нельзя коммитить. Если токен уже был опубликован, перевыпусти его через BotFather командой `/revoke`.
-
-### База онбординга
-
-Основной бот использует SQLite-базу старого онбординга:
-
-```env
-DATABASE_PATH=data/bot.sqlite3
-```
-
-В неё пишутся пользователи, сессии квиза, ответы и события. Второй шаг онбординга также читает из этой базы популярные пользовательские ответы и подмешивает их в TOP-10. В Docker путь переопределяется на `/app/data/bot.sqlite3`, чтобы база жила в volume контейнера.
-
-### JSON для backend админки
-
-После завершения онбординга бот собирает отдельный JSON-payload формата `admin.onboarding.v1`. В него входят Telegram-пользователь, id quiz/course-сессий, нормализованный профиль, сырые ключи профиля, все ответы по шагам, итог и сгенерированный маршрут. Payload сохраняется:
-
-- в `bot_state.json` по ключу пользователя `admin_onboarding_payload`;
-- в `analytics_events.payload_json` событием `admin_onboarding_payload_prepared`.
-
-Этот объект можно без дополнительной нормализации отправлять следующим шагом в backend админки.
-
-## Структура
-
-- `bot/domain` — каталог MVP-направлений и чистая логика сборки маршрута для совместимости прототипа.
-- `bot/application` — сценарий онбординга и форматирование сообщений.
-- `bot/infrastructure` — Telegram Bot API, конфиг и JSON-хранилище состояния.
-- `bot/presentation` — inline-клавиатуры и WebApp-кнопка.
-- `miniapp/src/domain` — чистая логика нормализации профиля, выбора трека, ограничений маршрута и ранжирования материалов.
-- `miniapp/src/infrastructure` — мок-каталог знаний и репозиторий. В будущем здесь заменяется источник данных на API.
-- `miniapp/src/presentation` — UI, состояние экрана, стили и события прототипа.
-
-## Что демонстрирует бот
-
-- `/start` показывает интро онбординга;
-- кнопка старта запускает 7-шаговый квиз из TrueTechTelegram;
-- вопросы собирают цель, интерес/специальность, возраст, ближайший результат, уровень, время и ограничения;
-- можно выбирать кнопки или писать свой вариант;
-- после анкеты бот сохраняет профиль и показывает кнопку открытия Mini App;
-- `/app` повторно показывает кнопку Mini App для уже собранного профиля.
-
-### LLM-адаптация онбординга
-
-Бот умеет подключать Timeweb AI-агента через OpenAI-compatible Chat Completions API и использовать его только для UX-копирайтинга: переформулировать текст текущего шага, подписи кнопок и финальный итог. Структура квиза, коды ответов и callback-логика остаются фиксированными.
-
-```env
-LLM_ONBOARDING_ENABLED=true
-LLM_AGENT_BASE_URL=https://agent.timeweb.cloud/api/v1/cloud-ai/agents/2dad3aa1-b649-4dbe-ac57-a079192e0abf/v1
-LLM_AGENT_ACCESS_ID=2dad3aa1-b649-4dbe-ac57-a079192e0abf
-LLM_AGENT_TOKEN=your_timeweb_agent_token
-LLM_AGENT_MODEL=gpt-4.1
-LLM_AGENT_TIMEOUT=0
-LLM_AGENT_MAX_TOKENS=500
-LLM_AGENT_PROGRESS_INTERVAL=2
-```
-
-Системные промпты лежат в `bot/application/onboarding_adaptation.py`. Защита от prompt injection сделана в два слоя: пользовательские ответы передаются агенту только как JSON-данные, а ответ агента принимается только как JSON по ожидаемой схеме, чистится, ограничивается по длине и экранируется перед отправкой в Telegram.
-Пока агент думает, бот редактирует центральное сообщение в промежуточное состояние. `LLM_AGENT_TIMEOUT` задается в секундах; значение `0` означает ждать ответ без ограничения по времени.
-`LLM_AGENT_MAX_TOKENS` ограничивает размер JSON-ответа агента, чтобы он не тратил время на длинный вывод.
-`LLM_AGENT_PROGRESS_INTERVAL` задает, как часто обновлять спиннер ожидания в Telegram.
-
-## Mini App
-
-Mini App реализован на React + Vite. В Docker он собирается в `dist` на Node stage, после чего контейнер отдаёт готовую статику на порту `8080`. Этот же порт отдаёт JSON API для Mini App:
-
-- `GET /api/roadmap` — читает последнюю сессию курса из SQLite;
-- `GET /api/roadmap?telegram_user_id=...` — читает маршрут конкретного Telegram-пользователя;
-- `POST /api/progress/mark` — записывает завершение модуля в `course_sessions` и `course_module_events`;
-- `POST /api/feedback` — записывает обратную связь в `course_module_events`.
-- `POST /api/certificates/upload` — сохраняет PDF или изображение сертификата из Mini App в `data/certificates` и `user_certificates`.
-
-Если в базе нет маршрутов, Mini App покажет демо-данные, чтобы интерфейс не ломался.
-
-Локальная разработка Mini App:
+Mini App в режиме разработки:
 
 ```powershell
 cd miniapp
@@ -100,104 +80,145 @@ npm install
 npm run dev
 ```
 
-Проверка production-сборки:
+Production-сборка:
 
 ```powershell
 cd miniapp
 npm run build
 ```
 
-Проверка API на сервере:
-
-```bash
-curl http://localhost:8080/api/roadmap
-```
-
-### Docker
-
-Контейнер запускает два процесса:
-
-- Telegram-бота через long polling;
-- статическую Mini App на порту `8080`.
+## Docker
 
 Сборка и запуск:
 
-```powershell
-docker compose up -d --build
+```bash
+docker compose build --no-cache
+docker compose up -d
 ```
 
-На сервере нужно направить публичный HTTPS-домен на порт контейнера `8080`, например:
+Остановить:
 
-```env
-MINIAPP_URL=https://your-domain.ru/
+```bash
+docker compose stop progressors-bot
 ```
 
-После изменения `MINIAPP_URL` один раз обнови Telegram-команды и кнопку Mini App:
+Полностью остановить compose-проект:
 
-```powershell
+```bash
+docker compose down
+```
+
+Проверка Mini App на сервере:
+
+```bash
+curl http://localhost:8080/
+curl http://localhost:8080/api/roadmap
+curl http://localhost:8080/api/admin/summary
+```
+
+## Настройка Telegram Mini App
+
+После деплоя и настройки HTTPS-домена в `.env`:
+
+```bash
 docker compose run --rm -e SETUP_TELEGRAM=true progressors-bot python -m bot.setup_telegram
 ```
 
-или временно поставь в `docker-compose.yml`:
-
-```yaml
-SETUP_TELEGRAM: "true"
-```
-
-запусти контейнер, затем верни значение обратно на `"false"`.
-
-## Если Telegram открывает Example Domain
-
-Это значит, что в Telegram всё ещё зарегистрирован старый Mini App URL `https://example.com/...`.
-
-Проверь `.env` на сервере:
+Важно: `MINIAPP_URL` должен быть публичным HTTPS URL без двойного протокола. Правильно:
 
 ```env
 MINIAPP_URL=https://unovus.arffis.com/
 ```
 
-После изменения `.env` нужно выполнить оба шага:
+Неправильно:
+
+```env
+MINIAPP_URL=https://https://unovus.arffis.com/
+MINIAPP_URL=http://localhost:8080/
+MINIAPP_URL=https://example.com/
+```
+
+## Nginx для домена
+
+Если домен уже отдает старую страницу из `/var/www`, нужно проксировать его на контейнер:
+
+```nginx
+server {
+    server_name unovus.arffis.com www.unovus.arffis.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/unovus.arffis.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/unovus.arffis.com/privkey.pem;
+}
+```
+
+Проверка и перезапуск:
 
 ```bash
-docker compose up -d --force-recreate
-docker compose run --rm progressors-bot python -m bot.setup_telegram
+sudo nginx -t
+sudo systemctl reload nginx
+curl https://unovus.arffis.com/api/roadmap
 ```
 
-Во время настройки в консоли должно появиться:
+## API Mini App
 
-```text
-Configuring Mini App URL: https://unovus.arffis.com/
-Telegram commands and Mini App menu button configured.
-```
+- `GET /api/roadmap` — последний маршрут из БД.
+- `GET /api/roadmap?telegram_user_id=123` — маршрут конкретного Telegram-пользователя.
+- `POST /api/progress/mark` — отметить модуль пройденным.
+- `POST /api/feedback` — сохранить обратную связь, при необходимости перестроить маршрут.
+- `POST /api/roadmap/rebuild` — перестроить маршрут вручную.
+- `POST /api/certificates/upload` — загрузить сертификат.
+- `GET /api/admin/summary` — сводка для будущей админки.
 
-Если там напечатался `example.com`, значит контейнер читает старый `.env` или файл `.env` изменён не в той папке.
-
-## Быстрая диагностика на сервере
-
-Проверка контейнера:
+Пример перестройки маршрута:
 
 ```bash
-curl http://localhost:8080/ | grep Прогрессоры
+curl -X POST http://localhost:8080/api/roadmap/rebuild \
+  -H "Content-Type: application/json" \
+  -d '{"courseId":1,"reason":"replace"}'
 ```
 
-Проверка публичного домена:
+## Деплой на сервер
+
+1. Забрать свежий код:
 
 ```bash
-curl https://unovus.arffis.com/ | grep Прогрессоры
+git pull --rebase origin main
 ```
 
-Обе команды должны найти `Прогрессоры`. Если первая работает, а вторая нет, проблема в nginx/reverse proxy, а не в Docker.
+2. Заполнить `.env` на сервере.
 
-Проверка переменных внутри контейнера:
+3. Собрать и запустить контейнер:
 
 ```bash
-docker compose exec progressors-bot sh -lc 'echo $MINIAPP_URL'
+docker compose build --no-cache
+docker compose up -d
 ```
 
-Проверка URL прямо в Telegram:
+4. Настроить Nginx на `127.0.0.1:8080`.
 
-```text
-/debug
+5. Обновить меню Telegram:
+
+```bash
+docker compose run --rm -e SETUP_TELEGRAM=true progressors-bot python -m bot.setup_telegram
 ```
 
-Если `/debug` показывает `example.com`, нужно исправить `.env`, пересоздать контейнер и заново выполнить `bot.setup_telegram`.
+6. Проверить:
+
+```bash
+docker compose logs -f progressors-bot
+curl https://unovus.arffis.com/
+curl https://unovus.arffis.com/api/roadmap
+```
+
+## Безопасность
+
+Нельзя коммитить реальный токен Telegram-бота. Если токен уже попадал в чат, README или git, перевыпусти его через BotFather командой `/revoke`.

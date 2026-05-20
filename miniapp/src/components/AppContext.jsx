@@ -24,6 +24,7 @@ export function AppProvider({ children }) {
     source,
     error,
     markModule,
+    rebuildRoadmap,
     saveFeedback,
     uploadCertificate: uploadCertificateToApi,
   } = useRoadmapData(activeProfile, telegramUser?.id);
@@ -81,10 +82,23 @@ export function AppProvider({ children }) {
     }
 
     try {
-      await saveFeedback(topic, feedback);
-      showToast("Обратная связь сохранена в базе.");
+      const result = await saveFeedback(topic, feedback);
+      showToast(result?.rebuilt ? "Маршрут перестроен с учетом обратной связи." : "Обратная связь сохранена в базе.");
     } catch {
       showToast("Не удалось сохранить обратную связь.");
+    }
+  }
+
+  async function rebuildTopicRoute(topic, reason = "manual") {
+    if (!topic?.courseId && topic?.courseId !== 0) {
+      showToast("В демо-режиме перестройка доступна после создания маршрута в боте.");
+      return;
+    }
+    try {
+      await rebuildRoadmap(topic, reason);
+      showToast("Маршрут обновлен.");
+    } catch {
+      showToast("Не удалось перестроить маршрут.");
     }
   }
 
@@ -139,6 +153,7 @@ export function AppProvider({ children }) {
       claimAchievement,
       markTopic,
       openCurrentTopic,
+      rebuildTopicRoute,
       saveTopicFeedback,
       setSelectedTopicId,
       showToast,

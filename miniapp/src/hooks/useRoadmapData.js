@@ -47,12 +47,27 @@ export function useRoadmapData(activeProfile, telegramUserId) {
   }
 
   async function saveFeedback(topic, feedback) {
-    await apiRepository.saveFeedback({
+    const result = await apiRepository.saveFeedback({
       courseId: topic.courseId,
       moduleIndex: topic.moduleIndex,
       feedback,
       telegramUserId,
     });
+    if (result.rebuilt) {
+      const roadmap = await apiRepository.getRoadmap(telegramUserId);
+      setState({ roadmap, loading: false, source: "database", error: "" });
+    }
+    return result;
+  }
+
+  async function rebuildRoadmap(topic, reason = "manual") {
+    await apiRepository.rebuildRoadmap({
+      courseId: topic?.courseId,
+      reason,
+      telegramUserId,
+    });
+    const roadmap = await apiRepository.getRoadmap(telegramUserId);
+    setState({ roadmap, loading: false, source: "database", error: "" });
   }
 
   async function uploadCertificate(file) {
@@ -66,6 +81,7 @@ export function useRoadmapData(activeProfile, telegramUserId) {
     ...state,
     markModule,
     saveFeedback,
+    rebuildRoadmap,
     uploadCertificate,
   };
 }

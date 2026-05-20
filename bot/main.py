@@ -34,10 +34,11 @@ from bot.application.profile_flow import (
     seed_top10_options,
 )
 from bot.application.onboarding_payload import build_admin_onboarding_payload
+from bot.domain.route_builder import build_personal_route
 from bot.infrastructure.config import Settings
+from bot.infrastructure.db_state_store import DatabaseStateStore
 from bot.infrastructure.llm_agent import LlmAgentClient
 from bot.infrastructure.onboarding_db import OnboardingDatabase
-from bot.infrastructure.state_store import JsonStateStore
 from bot.infrastructure.telegram_api import TelegramApi
 from bot.presentation.keyboards import miniapp_keyboard, question_keyboard, routes_keyboard, start_keyboard
 
@@ -64,10 +65,10 @@ def main() -> None:
     settings = Settings()
     settings.validate()
     api = TelegramApi(settings.bot_token)
-    store = JsonStateStore(settings.state_file)
     database = OnboardingDatabase(settings.database_path)
     database.connect()
     database.init_schema()
+    store = DatabaseStateStore(database)
     offset = None
     print(f"Progressors bot started. Onboarding database: {settings.database_path}")
 
@@ -85,7 +86,7 @@ def main() -> None:
 
 def handle_message(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     message: dict,
@@ -93,13 +94,15 @@ def handle_message(
     chat_id = message["chat"]["id"]
     text = message.get("text", "").strip()
     user = store.get_user(chat_id)
+    from_user = message.get("from") or {}
+    log_incoming_message(store, chat_id, from_user, message, text)
 
     if text in {"/start", "/restart"}:
         abandon_active_session(database, user)
         target = preserved_message_target(user)
         user.clear()
         user.update(target)
-        database.upsert_user(message.get("from") or {}, chat_id)
+        database.upsert_user(from_user, chat_id)
         store.save_user(chat_id, user)
         send_or_edit(api, store, chat_id, user, render_intro(), start_keyboard(), parse_mode=HTML)
         return
@@ -142,13 +145,13 @@ def handle_message(
         chat_id,
         user,
         text,
-        user_id=telegram_user_id(message.get("from") or {}, chat_id),
+        user_id=telegram_user_id(from_user, chat_id),
     )
 
 
 def handle_callback(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     callback: dict,
@@ -157,6 +160,7 @@ def handle_callback(
     chat_id = callback["message"]["chat"]["id"]
     callback_id = callback["id"]
     user = store.get_user(chat_id)
+    log_callback_message(store, chat_id, callback, data)
 
     if data == "quiz:start":
         api.answer_callback(callback_id)
@@ -320,7 +324,7 @@ def handle_callback(
 
 def handle_text_answer(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -361,7 +365,7 @@ def handle_text_answer(
 
 def finish_or_continue(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -386,7 +390,7 @@ def finish_or_continue(
 
 def complete_onboarding(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -397,7 +401,7 @@ def complete_onboarding(
     finish_database_session(database, session, profile)
     session_id = as_int(session.get(DB_SESSION_ID))
     user_id = as_int(session.get(DB_USER_ID)) or chat_id
-    route = build_sample_route(profile)
+    route = build_personal_route(profile)
     course_id = database.create_course_session(
         user_id=user_id,
         quiz_session_id=session_id,
@@ -456,7 +460,7 @@ def complete_onboarding(
 
 def send_current_question(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -510,7 +514,7 @@ def send_current_question(
 
 def send_miniapp_entry(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     settings: Settings,
     chat_id: int,
     user: dict,
@@ -570,7 +574,7 @@ def get_question_adaptation(
     *,
     client: LlmAgentClient | None = None,
     api: TelegramApi | None = None,
-    store: JsonStateStore | None = None,
+    store: DatabaseStateStore | None = None,
     chat_id: int | None = None,
     user: dict | None = None,
 ) -> QuestionAdaptation | None:
@@ -635,7 +639,7 @@ def call_llm_with_progress(
     messages: list[dict[str, str]],
     *,
     api: TelegramApi,
-    store: JsonStateStore | None,
+    store: DatabaseStateStore | None,
     chat_id: int,
     user: dict,
     render_progress,
@@ -693,7 +697,7 @@ def generate_completion_adaptation(
     *,
     client: LlmAgentClient | None = None,
     api: TelegramApi | None = None,
-    store: JsonStateStore | None = None,
+    store: DatabaseStateStore | None = None,
     chat_id: int | None = None,
     user: dict | None = None,
 ) -> CompletionAdaptation | None:
@@ -743,7 +747,7 @@ def create_llm_client(settings: Settings) -> LlmAgentClient | None:
 
 def handle_routes_callback(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -770,12 +774,47 @@ def handle_routes_callback(
             send_route_detail(api, store, database, settings, chat_id, user, route_id, page, user_id=user_id)
         return
 
+    if len(parts) >= 4 and parts[1] == "rebuild":
+        route_id = as_int(parts[2])
+        page = as_int(parts[3]) or 0
+        if route_id is not None:
+            rebuild_route_from_bot(api, store, database, settings, chat_id, user, route_id, page, user_id=user_id)
+        return
+
     send_routes_page(api, store, database, settings, chat_id, user, 0, user_id=user_id)
+
+
+def rebuild_route_from_bot(
+    api: TelegramApi,
+    store: DatabaseStateStore,
+    database: OnboardingDatabase,
+    settings: Settings,
+    chat_id: int,
+    user: dict,
+    route_id: int,
+    page: int,
+    *,
+    user_id: int,
+) -> None:
+    route = database.get_course_session(route_id, user_id=user_id)
+    if route is None:
+        send_routes_page(api, store, database, settings, chat_id, user, page, user_id=user_id)
+        return
+
+    rebuilt_route = build_personal_route(route.get("profile") or {}, reason="manual", previous_route=route.get("route") or [])
+    database.rebuild_course_session(route_id, user_id, rebuilt_route)
+    database.save_event(
+        user_id=user_id,
+        event_name="route_rebuilt_from_bot",
+        payload={"course_session_id": route_id},
+        session_id=route.get("quiz_session_id"),
+    )
+    send_routes_page(api, store, database, settings, chat_id, user, page, user_id=user_id)
 
 
 def send_routes_page(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -816,7 +855,7 @@ def send_routes_page(
 
 def send_route_detail(
     api: TelegramApi,
-    store: JsonStateStore,
+    store: DatabaseStateStore,
     database: OnboardingDatabase,
     settings: Settings,
     chat_id: int,
@@ -954,7 +993,7 @@ def sample_material(kind: str, title: str, source: str, duration: str, interacti
 
 def send_or_edit(
     api: TelegramApi,
-    store: JsonStateStore | None,
+    store: DatabaseStateStore | None,
     chat_id: int,
     user: dict,
     text: str,
@@ -978,6 +1017,7 @@ def send_or_edit(
             remember_bot_message(user, result)
             if store is not None:
                 store.save_user(chat_id, user)
+                log_outgoing_message(store, chat_id, text, reply_markup, parse_mode, "edit")
             return
         except RuntimeError as error:
             if "message is not modified" in str(error).lower():
@@ -987,6 +1027,7 @@ def send_or_edit(
     remember_bot_message(user, result)
     if store is not None:
         store.save_user(chat_id, user)
+        log_outgoing_message(store, chat_id, text, reply_markup, parse_mode, "send")
 
 
 def current_question_with_database(session: dict, database: OnboardingDatabase) -> QuizQuestion | None:
@@ -1088,6 +1129,75 @@ def sync_database_session(database: OnboardingDatabase, session: dict) -> None:
 def abandon_active_session(database: OnboardingDatabase, user: dict) -> None:
     session = user.get("session") or {}
     database.abandon_session(as_int(session.get(DB_SESSION_ID)))
+
+
+def log_incoming_message(
+    store: DatabaseStateStore,
+    chat_id: int,
+    from_user: dict,
+    message: dict,
+    text: str,
+) -> None:
+    store.save_chat_message(
+        chat_id=chat_id,
+        telegram_user_id=telegram_user_id(from_user, chat_id),
+        direction="in",
+        message_type="message",
+        text=text or message.get("caption"),
+        payload={
+            "message_id": message.get("message_id"),
+            "content_type": detect_message_type(message),
+        },
+    )
+
+
+def log_callback_message(
+    store: DatabaseStateStore,
+    chat_id: int,
+    callback: dict,
+    data: str,
+) -> None:
+    from_user = callback.get("from") or {}
+    message = callback.get("message") or {}
+    store.save_chat_message(
+        chat_id=chat_id,
+        telegram_user_id=telegram_user_id(from_user, chat_id),
+        direction="in",
+        message_type="callback",
+        text=data,
+        payload={
+            "callback_id": callback.get("id"),
+            "message_id": message.get("message_id"),
+        },
+    )
+
+
+def log_outgoing_message(
+    store: DatabaseStateStore,
+    chat_id: int,
+    text: str,
+    reply_markup: dict | None,
+    parse_mode: str | None,
+    action: str,
+) -> None:
+    store.save_chat_message(
+        chat_id=chat_id,
+        direction="out",
+        message_type="bot_message",
+        text=text,
+        payload={
+            "action": action,
+            "parse_mode": parse_mode,
+            "reply_markup": reply_markup,
+        },
+    )
+
+
+def detect_message_type(message: dict) -> str:
+    for key in ("text", "photo", "document", "video", "voice", "audio", "sticker", "contact", "location"):
+        if key in message:
+            return key
+    return "unknown"
 
 
 def telegram_user_id(user: dict, fallback_user_id: int) -> int:

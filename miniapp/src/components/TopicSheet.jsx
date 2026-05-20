@@ -1,6 +1,7 @@
 import { iconFor } from "../utils/materialIcons.js";
 
-export function TopicSheet({ topic, onClose, onToast, onMarkModule, onFeedback }) {
+export function TopicSheet({ topic, onClose, onToast, onMarkModule, onFeedback, onRebuildRoute }) {
+  const firstMaterialUrl = topic.materials.find((material) => material.url)?.url;
   return (
     <div className="modal show" onClick={onClose}>
       <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="topic-title" onClick={(event) => event.stopPropagation()}>
@@ -24,7 +25,11 @@ export function TopicSheet({ topic, onClose, onToast, onMarkModule, onFeedback }
             <article key={material.id} className="material">
               <b>{iconFor(material.format)}</b>
               <div>
-                <h3>{material.title}</h3>
+                <h3>
+                  {material.url ? (
+                    <a href={material.url} target="_blank" rel="noreferrer">{material.title}</a>
+                  ) : material.title}
+                </h3>
                 <p>{materialMeta(material)}</p>
                 {material.interaction && <p>{material.interaction}</p>}
               </div>
@@ -38,7 +43,7 @@ export function TopicSheet({ topic, onClose, onToast, onMarkModule, onFeedback }
           </div>
         )}
         <div className="actions two">
-          <button className="btn primary" type="button" onClick={() => onToast("Откроется ссылка на материал из проверенного каталога.")}>
+          <button className="btn primary" type="button" onClick={() => firstMaterialUrl ? window.open(firstMaterialUrl, "_blank", "noopener,noreferrer") : onToast("У этого материала пока нет ссылки.")}>
             Открыть материал
           </button>
           <button className="btn blue" type="button" onClick={() => onMarkModule?.(topic)}>
@@ -49,7 +54,7 @@ export function TopicSheet({ topic, onClose, onToast, onMarkModule, onFeedback }
           <button type="button" onClick={() => onFeedback?.(topic, "useful")}>Полезно</button>
           <button type="button" onClick={() => onFeedback?.(topic, "hard")}>Сложно</button>
           <button type="button" onClick={() => onFeedback?.(topic, "easy")}>Просто</button>
-          <button type="button" onClick={() => onFeedback?.(topic, "replace")}>Заменить</button>
+          <button type="button" onClick={() => onRebuildRoute?.(topic, "replace") ?? onFeedback?.(topic, "replace")}>Заменить</button>
           <button type="button" onClick={() => onMarkModule?.(topic)}>Уже знаю</button>
         </div>
       </section>

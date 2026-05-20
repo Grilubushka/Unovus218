@@ -41,6 +41,24 @@ class OnboardingDatabase:
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS chat_states (
+                chat_id INTEGER PRIMARY KEY,
+                state_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                telegram_user_id INTEGER,
+                direction TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                text TEXT,
+                payload_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS quiz_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_user_id INTEGER NOT NULL,
@@ -124,6 +142,66 @@ class OnboardingDatabase:
             """
         )
         db.commit()
+
+    def get_chat_state(self, chat_id: int) -> dict[str, Any]:
+        cursor = self._db().execute(
+            "SELECT state_json FROM chat_states WHERE chat_id = ?",
+            (chat_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return {}
+        return self._loads(row["state_json"])
+
+    def save_chat_state(self, chat_id: int, state: dict[str, Any]) -> None:
+        self._db().execute(
+            """
+            INSERT INTO chat_states (chat_id, state_json)
+            VALUES (?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                state_json = excluded.state_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (chat_id, self._json(state)),
+        )
+        self._db().commit()
+
+    def reset_chat_state(self, chat_id: int) -> None:
+        self._db().execute("DELETE FROM chat_states WHERE chat_id = ?", (chat_id,))
+        self._db().commit()
+
+    def save_chat_message(
+        self,
+        *,
+        chat_id: int,
+        direction: str,
+        message_type: str,
+        telegram_user_id: int | None = None,
+        text: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        self._db().execute(
+            """
+            INSERT INTO chat_messages (
+                chat_id,
+                telegram_user_id,
+                direction,
+                message_type,
+                text,
+                payload_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                chat_id,
+                telegram_user_id,
+                direction,
+                message_type,
+                text,
+                self._json(payload or {}),
+            ),
+        )
+        self._db().commit()
 
     def upsert_user(self, user: dict[str, Any], fallback_user_id: int) -> None:
         db = self._db()
@@ -476,6 +554,34 @@ class OnboardingDatabase:
 
         row = self._db().execute(query, params).fetchone()
         return self._course_row(row) if row is not None else None
+
+    def rebuild_course_session(self, course_id: int, user_id: int, route: list[dict[str, Any]]) -> None:
+        self._db().execute(
+            """
+            UPDATE course_sessions
+            SET route_json = ?,
+                total_modules = ?,
+                current_module = MIN(current_module, ?),
+                status = CASE WHEN status = 'completed' THEN 'active' ELSE status END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND telegram_user_id = ?
+            """,
+            (self._json(route), len(route), max(len(route) - 1, 0), course_id, user_id),
+        )
+        self._db().execute(
+            """
+            INSERT INTO course_module_events (
+                course_session_id,
+                telegram_user_id,
+                module_index,
+                event_name,
+                payload_json
+            )
+            VALUES (?, ?, 0, 'route_rebuilt', ?)
+            """,
+            (course_id, user_id, self._json({"source": "bot"})),
+        )
+        self._db().commit()
 
     def _db(self) -> sqlite3.Connection:
         if self.connection is None:
