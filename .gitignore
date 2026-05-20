@@ -3,3 +3,5 @@
 __pycache__/
 .venv/
 bot_state.json
+miniapp/node_modules/
+miniapp/dist/

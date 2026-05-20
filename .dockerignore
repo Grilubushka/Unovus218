@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 bot_state.json
 data/
+miniapp/node_modules/
+miniapp/dist/
