@@ -21,6 +21,7 @@ class Settings:
         self.bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         self.miniapp_url = os.environ.get("MINIAPP_URL", "")
         self.state_file = os.environ.get("STATE_FILE", "bot_state.json")
+        self.database_path = os.environ.get("DATABASE_PATH", default_database_path())
 
     def validate(self) -> None:
         if not self.bot_token:
@@ -46,3 +47,10 @@ def validate_public_https_url(url: str) -> None:
 
     if "://" in parsed.netloc:
         raise RuntimeError("MINIAPP_URL содержит лишний протокол. Нужно так: https://unovus.arffis.com/")
+
+
+def default_database_path() -> str:
+    old_onboarding_db = Path("TrueTechTelegram/data/bot.sqlite3")
+    if old_onboarding_db.exists():
+        return str(old_onboarding_db)
+    return "data/bot.sqlite3"

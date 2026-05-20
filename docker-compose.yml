@@ -8,6 +8,7 @@ services:
     environment:
       MINIAPP_PORT: 8080
       STATE_FILE: /app/data/bot_state.json
+      DATABASE_PATH: /app/data/bot.sqlite3
       # Поставь true один раз после настройки MINIAPP_URL, чтобы обновить команды и кнопку Mini App.
       SETUP_TELEGRAM: "false"
     ports:

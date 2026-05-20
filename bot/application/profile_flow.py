@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import escape
 
 
@@ -65,6 +65,10 @@ def get_question(index: int, profile: dict[str, str] | None = None) -> QuizQuest
 
 def get_option(question: QuizQuestion, option_code: str) -> QuizOption | None:
     return next((option for option in question.options if option.code == option_code), None)
+
+
+def replace_question_options(question: QuizQuestion, options: tuple[QuizOption, ...]) -> QuizQuestion:
+    return replace(question, options=options)
 
 
 def create_manual_option(question: QuizQuestion, raw_text: str) -> QuizOption:
