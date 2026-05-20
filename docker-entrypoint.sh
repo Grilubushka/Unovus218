@@ -6,7 +6,12 @@ if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
   exit 1
 fi
 
-python -m http.server "${MINIAPP_PORT:-8080}" --directory /app/miniapp &
+mkdir -p /app/data
+if [ ! -f "${DATABASE_PATH:-/app/data/bot.sqlite3}" ] && [ -f /app/seed/bot.sqlite3 ]; then
+  cp /app/seed/bot.sqlite3 "${DATABASE_PATH:-/app/data/bot.sqlite3}"
+fi
+
+python -m bot.infrastructure.miniapp_server &
 STATIC_PID="$!"
 
 cleanup() {

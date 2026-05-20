@@ -1,9 +1,9 @@
-export function Hero({ roadmap, onOpenCurrent }) {
+export function Hero({ roadmap, source, loading, error, onOpenCurrent }) {
   return (
     <section className="hero">
-      <span className="eyebrow">Минимально достаточный путь</span>
+      <span className="eyebrow">{loading ? "Загрузка базы" : source === "database" ? "Данные из базы" : "Демо-данные"}</span>
       <h1>{roadmap.title}</h1>
-      <p>{roadmap.explanation}</p>
+      <p>{error ? `${roadmap.explanation} Mini App временно показывает демо: ${error}` : roadmap.explanation}</p>
       <div className="hero-grid">
         <div>
           <strong>{roadmap.progress}%</strong>

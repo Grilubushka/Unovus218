@@ -1,6 +1,6 @@
 import { iconFor } from "../utils/materialIcons.js";
 
-export function TopicSheet({ topic, onClose, onToast }) {
+export function TopicSheet({ topic, onClose, onToast, onMarkModule, onFeedback }) {
   return (
     <div className="modal show" onClick={onClose}>
       <section className="sheet" role="dialog" aria-modal="true" aria-labelledby="topic-title" onClick={(event) => event.stopPropagation()}>
@@ -25,29 +25,39 @@ export function TopicSheet({ topic, onClose, onToast }) {
               <b>{iconFor(material.format)}</b>
               <div>
                 <h3>{material.title}</h3>
-                <p>
-                  {material.source} · {material.minutes} мин · бесплатно · русский язык
-                </p>
+                <p>{materialMeta(material)}</p>
+                {material.interaction && <p>{material.interaction}</p>}
               </div>
             </article>
           ))}
         </section>
+        {(topic.practice || topic.checkpoint) && (
+          <div className="competency">
+            {topic.practice && <p>{topic.practice}</p>}
+            {topic.checkpoint && <p>{topic.checkpoint}</p>}
+          </div>
+        )}
         <div className="actions two">
           <button className="btn primary" type="button" onClick={() => onToast("Откроется ссылка на материал из проверенного каталога.")}>
             Открыть материал
           </button>
-          <button className="btn blue" type="button" onClick={() => onToast("Запуск мини-теста. В API: GET /api/topics/{id}/quiz.")}>
-            Пройти тест
+          <button className="btn blue" type="button" onClick={() => onMarkModule?.(topic)}>
+            Отметить модуль
           </button>
         </div>
         <div className="feedback">
-          <button type="button" onClick={() => onToast("Спасибо. Материал останется в маршруте.")}>Полезно</button>
-          <button type="button" onClick={() => onToast("Система добавит вводный материал проще.")}>Сложно</button>
-          <button type="button" onClick={() => onToast("Система предложит более сложную практику.")}>Просто</button>
-          <button type="button" onClick={() => onToast("Материал заменён по формату и уровню.")}>Заменить</button>
-          <button type="button" onClick={() => onToast("Тема отмечена как пройденная.")}>Уже знаю</button>
+          <button type="button" onClick={() => onFeedback?.(topic, "useful")}>Полезно</button>
+          <button type="button" onClick={() => onFeedback?.(topic, "hard")}>Сложно</button>
+          <button type="button" onClick={() => onFeedback?.(topic, "easy")}>Просто</button>
+          <button type="button" onClick={() => onFeedback?.(topic, "replace")}>Заменить</button>
+          <button type="button" onClick={() => onMarkModule?.(topic)}>Уже знаю</button>
         </div>
       </section>
     </div>
   );
+}
+
+function materialMeta(material) {
+  const duration = material.duration || (material.minutes ? `${material.minutes} мин` : "");
+  return [material.source, duration, "бесплатно", "русский язык"].filter(Boolean).join(" · ");
 }

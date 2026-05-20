@@ -19,10 +19,11 @@ WORKDIR /app
 
 COPY bot ./bot
 COPY --from=miniapp-builder /app/miniapp/dist ./miniapp
+COPY bot.sqlite3 ./seed/bot.sqlite3
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN chmod +x /app/docker-entrypoint.sh \
-    && mkdir -p /app/data
+    && mkdir -p /app/data /app/seed
 
 EXPOSE 8080
 

@@ -3,5 +3,7 @@
 __pycache__/
 .venv/
 bot_state.json
+*.sqlite3-shm
+*.sqlite3-wal
 miniapp/node_modules/
 miniapp/dist/

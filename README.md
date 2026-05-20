@@ -53,7 +53,14 @@ DATABASE_PATH=TrueTechTelegram/data/bot.sqlite3
 
 ## Mini App
 
-Mini App реализован на React + Vite. В Docker он собирается в `dist` на Node stage, после чего контейнер отдаёт готовую статику на порту `8080`. Для Telegram это не backend приложения, а webview-интерфейс внутри бота.
+Mini App реализован на React + Vite. В Docker он собирается в `dist` на Node stage, после чего контейнер отдаёт готовую статику на порту `8080`. Этот же порт отдаёт JSON API для Mini App:
+
+- `GET /api/roadmap` — читает последнюю сессию курса из SQLite;
+- `GET /api/roadmap?telegram_user_id=...` — читает маршрут конкретного Telegram-пользователя;
+- `POST /api/progress/mark` — записывает завершение модуля в `course_sessions` и `course_module_events`;
+- `POST /api/feedback` — записывает обратную связь в `course_module_events`.
+
+Если в базе нет маршрутов, Mini App покажет демо-данные, чтобы интерфейс не ломался.
 
 Локальная разработка Mini App:
 
@@ -68,6 +75,12 @@ npm run dev
 ```powershell
 cd miniapp
 npm run build
+```
+
+Проверка API на сервере:
+
+```bash
+curl http://localhost:8080/api/roadmap
 ```
 
 ### Docker
