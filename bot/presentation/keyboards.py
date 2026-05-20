@@ -93,5 +93,6 @@ def routes_keyboard(
 
     if route_id is not None:
         buttons.append(callback_button("Подробнее", f"routes:detail:{route_id}:{page}", style="primary", emoji="🔍"))
+    buttons.append(callback_button("Главное меню", "routes:menu", style="primary", emoji="🏠"))
     buttons.append(callback_button("Собрать новый", "quiz:start", style="primary", emoji="🔄"))
     return inline_keyboard(button_rows(buttons))

@@ -352,7 +352,8 @@ class OnboardingDatabase:
                 s.finished_at,
                 u.username,
                 u.first_name,
-                u.last_name
+                u.last_name,
+                u.language_code
             FROM quiz_sessions AS s
             LEFT JOIN users AS u ON u.telegram_user_id = s.telegram_user_id
             WHERE s.id = ?
@@ -377,6 +378,7 @@ class OnboardingDatabase:
                 "username": row["username"],
                 "first_name": row["first_name"],
                 "last_name": row["last_name"],
+                "language_code": row["language_code"],
             },
         }
 

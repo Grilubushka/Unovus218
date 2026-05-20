@@ -1,5 +1,6 @@
 import threading
 import time
+from datetime import datetime, timezone
 from html import escape
 
 from bot.application.onboarding_adaptation import (
@@ -32,6 +33,7 @@ from bot.application.profile_flow import (
     render_question,
     seed_top10_options,
 )
+from bot.application.onboarding_payload import build_admin_onboarding_payload
 from bot.infrastructure.config import Settings
 from bot.infrastructure.llm_agent import LlmAgentClient
 from bot.infrastructure.onboarding_db import OnboardingDatabase
@@ -391,18 +393,39 @@ def complete_onboarding(
     user: dict,
     profile: dict,
 ) -> None:
-    finish_database_session(database, user.get("session") or {}, profile)
     session = user.get("session") or {}
+    finish_database_session(database, session, profile)
+    session_id = as_int(session.get(DB_SESSION_ID))
     user_id = as_int(session.get(DB_USER_ID)) or chat_id
     route = build_sample_route(profile)
     course_id = database.create_course_session(
         user_id=user_id,
-        quiz_session_id=as_int(session.get(DB_SESSION_ID)),
+        quiz_session_id=session_id,
         profile=profile,
         route=route,
     )
+    answers = database.get_session_answers(session_id) if session_id is not None else []
+    snapshot = database.get_session_snapshot(session_id) if session_id is not None else None
+    admin_payload = build_admin_onboarding_payload(
+        telegram_user_id=user_id,
+        chat_id=chat_id,
+        quiz_session_id=session_id,
+        course_session_id=course_id,
+        profile=profile,
+        answers=answers,
+        route=route,
+        user=(snapshot or {}).get("user") or {},
+        submitted_at=datetime.now(timezone.utc).isoformat(),
+    )
+    database.save_event(
+        user_id=user_id,
+        event_name="admin_onboarding_payload_prepared",
+        payload=admin_payload,
+        session_id=session_id,
+    )
     user["profile"] = profile
     user["active_route_id"] = course_id
+    user["admin_onboarding_payload"] = admin_payload
     completion_client = create_llm_client(settings)
     completion_copy = generate_completion_adaptation(
         settings,
@@ -516,12 +539,12 @@ def render_question_thinking(question: QuizQuestion, index: int, frame: int = 0,
     spinner = SPINNER_FRAMES[frame % len(SPINNER_FRAMES)]
     wait_bar = WAIT_BAR_FRAMES[frame % len(WAIT_BAR_FRAMES)]
     return (
-        f"{spinner} <b>Готовлю следующий шаг</b>\n\n"
-        f"<b>{escape(question.title)}</b>\n"
-        "Подбираю формулировки и кнопки под уже собранные ответы. "
-        "Бот не завис: жду ответ LLM-агента.\n\n"
+        f"{spinner} <b>✨ Настраиваю следующий вопрос</b>\n\n"
+        f"💬 <b>{escape(question.title)}</b>\n"
+        "Подбираю понятные формулировки и варианты под твои ответы. "
+        "Еще пару секунд — и можно двигаться дальше 🌿\n\n"
         f"<code>{wait_bar}</code> · {elapsed_seconds} сек.\n"
-        f"<b>Шаг {step}/{TOTAL_STEPS}</b> · думаю\n"
+        f"<b>Шаг {step}/{TOTAL_STEPS}</b> · готовлю\n"
         f"<b>Прогресс:</b> {progress_bar(index)}"
     )
 
@@ -531,10 +554,10 @@ def render_completion_thinking(profile: dict[str, str], frame: int = 0, elapsed_
     spinner = SPINNER_FRAMES[frame % len(SPINNER_FRAMES)]
     wait_bar = WAIT_BAR_FRAMES[frame % len(WAIT_BAR_FRAMES)]
     return (
-        f"{spinner} <b>Собираю итог онбординга</b>\n\n"
+        f"{spinner} <b>🎁 Собираю твой маршрут</b>\n\n"
         f"🏁 <b>{escape(str(result['hero']))}</b>\n"
-        "Профиль уже сохранен. Сейчас LLM-агент оформляет финальную карточку, "
-        "поэтому бот не завис и скоро заменит это сообщение на готовый итог.\n\n"
+        "Профиль уже сохранен. Аккуратно собираю цель, темп и первый шаг в финальную карточку. "
+        "Скоро покажу готовый результат ✨\n\n"
         f"<code>{wait_bar}</code> · {elapsed_seconds} сек."
     )
 
@@ -731,6 +754,10 @@ def handle_routes_callback(
     telegram_user = callback.get("from") or {}
     user_id = telegram_user_id(telegram_user, chat_id)
     parts = data.split(":")
+    if len(parts) >= 2 and parts[1] == "menu":
+        send_miniapp_entry(api, store, settings, chat_id, user)
+        return
+
     if len(parts) >= 3 and parts[1] == "page":
         page = as_int(parts[2]) or 0
         send_routes_page(api, store, database, settings, chat_id, user, page, user_id=user_id)
@@ -773,6 +800,8 @@ def send_routes_page(
     page = min(max(page, 0), len(routes) - 1)
     route = routes[page]
     user["active_route_id"] = route["id"]
+    if route.get("profile"):
+        user["profile"] = route["profile"]
     store.save_user(chat_id, user)
     send_or_edit(
         api,
@@ -802,6 +831,10 @@ def send_route_detail(
         send_routes_page(api, store, database, settings, chat_id, user, page, user_id=user_id)
         return
 
+    user["active_route_id"] = route["id"]
+    if route.get("profile"):
+        user["profile"] = route["profile"]
+    store.save_user(chat_id, user)
     send_or_edit(
         api,
         store,
