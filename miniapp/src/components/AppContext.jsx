@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState, useEffect } from "react";
 import { RoadmapRepository } from "../infrastructure/roadmapRepository.js";
 
 const AppContext = createContext(null);
@@ -30,7 +30,17 @@ export function AppProvider({ children }) {
   }
 
   return (
-    <AppContext.Provider value={{ roadmap, currentTopic, selectedTopic, activeProfile, toast, showToast, openCurrentTopic, changeProfile, setSelectedTopicId }}>
+    <AppContext.Provider value={{ 
+      roadmap, 
+      currentTopic,  
+      selectedTopic,
+      activeProfile, 
+      toast, 
+      showToast, 
+      openCurrentTopic, 
+      changeProfile, 
+      setSelectedTopicId 
+    }}>
       {children}
     </AppContext.Provider>
   );
