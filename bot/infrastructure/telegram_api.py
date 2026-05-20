@@ -1,5 +1,6 @@
 import json
 import socket
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -11,11 +12,11 @@ class TelegramApi:
     def __init__(self, token: str) -> None:
         self.base_url = f"https://api.telegram.org/bot{token}"
 
-    def get_updates(self, offset: int | None = None, timeout: int = 30) -> list[dict]:
+    def get_updates(self, offset: int | None = None, timeout: int = 10) -> list[dict]:
         params = {"timeout": timeout, "allowed_updates": json.dumps(["message", "callback_query"])}
         if offset is not None:
             params["offset"] = offset
-        return self._request("getUpdates", params, timeout=timeout + 20, retries=1).get("result", [])
+        return self._request("getUpdates", params, timeout=timeout + 10, retries=1).get("result", [])
 
     def send_message(
         self,
@@ -48,12 +49,18 @@ class TelegramApi:
         return result if isinstance(result, dict) else {}
 
     def answer_callback(self, callback_query_id: str, text: str = "") -> None:
+        thread = threading.Thread(
+            target=self._answer_callback_safely,
+            args=(callback_query_id, text),
+            daemon=True,
+        )
+        thread.start()
+
+    def _answer_callback_safely(self, callback_query_id: str, text: str) -> None:
         try:
-            self._request("answerCallbackQuery", {"callback_query_id": callback_query_id, "text": text}, timeout=8, retries=1)
-        except RuntimeError as error:
-            if "query is too old" in str(error).lower() or "query id is invalid" in str(error).lower():
-                return
-            raise
+            self._request("answerCallbackQuery", {"callback_query_id": callback_query_id, "text": text}, timeout=2, retries=1)
+        except Exception as error:
+            print(f"Telegram answerCallbackQuery skipped: {error}")
 
     def _request(self, method: str, payload: dict, *, timeout: int = 25, retries: int = 3) -> dict:
         data = urllib.parse.urlencode(payload).encode("utf-8")
