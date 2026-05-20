@@ -1,0 +1,4 @@
+Django==5.2.14
+django-unfold==0.81.0
+python-dotenv==1.2.2
+openai==2.8.1

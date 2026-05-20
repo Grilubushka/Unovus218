@@ -1,0 +1,21 @@
+{% extends "learning/base.html" %}
+
+{% block title %}Новый курс | RouteCraft{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <h1>Персональный маршрут обучения</h1>
+        <p class="muted">Напишите цель обычным текстом. Сервис задаст 2-3 уточняющих вопроса, построит курс через LLM и подберёт материалы через web_search отдельно для видео и текстов.</p>
+    </div>
+    <form method="post" class="panel">
+        {% csrf_token %}
+        <div class="form-row">
+            {{ form.goal.label_tag }}
+            {{ form.goal }}
+            {% for error in form.goal.errors %}<p class="muted">{{ error }}</p>{% endfor %}
+        </div>
+        <button type="submit">Начать</button>
+    </form>
+</section>
+{% endblock %}

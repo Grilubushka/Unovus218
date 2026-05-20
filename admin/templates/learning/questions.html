@@ -1,0 +1,21 @@
+{% extends "learning/base.html" %}
+
+{% block title %}Уточнения | RouteCraft{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <h1>Уточним маршрут</h1>
+    <p class="muted">{{ goal }}</p>
+    <form method="post">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="form-row">
+                {{ field.label_tag }}
+                {{ field }}
+                {% for error in field.errors %}<p class="muted">{{ error }}</p>{% endfor %}
+            </div>
+        {% endfor %}
+        <button type="submit">Построить курс</button>
+    </form>
+</section>
+{% endblock %}

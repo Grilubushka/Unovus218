@@ -1,0 +1,98 @@
+{% extends "learning/base.html" %}
+
+{% block title %}{{ course.title }} | RouteCraft{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <h1>{{ course.title }}</h1>
+    <p class="muted">{{ course.goal }}</p>
+    <div class="stats">
+        <div class="stat"><span class="muted">Статус</span><strong>{{ course.get_status_display }}</strong></div>
+        <div class="stat"><span class="muted">Трудоёмкость</span><strong>{{ course.total_effort_hours }} ч</strong></div>
+        <div class="stat"><span class="muted">Модулей</span><strong>{{ course.modules.all|length }}</strong></div>
+    </div>
+    {% if course.recommendation_summary %}
+        <p>{{ course.recommendation_summary }}</p>
+    {% endif %}
+</section>
+
+<section class="module-list" style="margin-top: 18px;">
+    {% for module in course.modules.all %}
+        <article class="module">
+            <div class="module-head">
+                <div>
+                    <h2>{{ module.order }}. {{ module.title }}</h2>
+                    <p>{{ module.description }}</p>
+                    <div class="tags">
+                        <span class="tag">{{ module.get_status_display }}</span>
+                        <span class="tag">{{ module.total_effort_hours }} ч</span>
+                        <span class="tag">{{ module.content_balance }}</span>
+                    </div>
+                    {% if module.use_cases %}<p class="muted">{{ module.use_cases }}</p>{% endif %}
+                    {% if module.market_relevance %}<p class="muted">{{ module.market_relevance }}</p>{% endif %}
+                </div>
+                <div class="element-actions">
+                    <form method="post" action="{% url 'learning:module_skip' module.pk %}">
+                        {% csrf_token %}
+                        <button class="secondary" type="submit">Пропустить</button>
+                    </form>
+                    <form class="mini-form" method="post" action="{% url 'learning:module_balance' module.pk %}">
+                        {% csrf_token %}
+                        {{ balance_form.balance }}
+                        <button class="warning" type="submit">Перестроить</button>
+                    </form>
+                </div>
+            </div>
+
+            {% if module.competencies %}
+                <div class="tags">
+                    {% for competency in module.competencies %}
+                        <span class="tag">{{ competency }}</span>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="elements">
+                {% for element in module.elements.all %}
+                    <div class="element">
+                        <div>
+                            <h3>{{ element.order }}. {{ element.title }}</h3>
+                            <p>{{ element.short_description }}</p>
+                            {% if element.material %}
+                                <p><a href="{{ element.material.url }}" target="_blank" rel="noopener">{{ element.material.title }}</a></p>
+                                <div class="tags">
+                                    <span class="tag">{{ element.material.get_format_display }}</span>
+                                    <span class="tag">{{ element.estimated_minutes }} мин</span>
+                                    {% if element.material.source %}<span class="tag">{{ element.material.source }}</span>{% endif %}
+                                </div>
+                            {% endif %}
+                            {% if element.recommendation_reason %}
+                                <p class="muted">{{ element.recommendation_reason }}</p>
+                            {% endif %}
+                        </div>
+                        <form class="mini-form" method="post" action="{% url 'learning:element_feedback' element.pk %}">
+                            {% csrf_token %}
+                            <select name="rating" required>
+                                {% for value, label in feedback_form.fields.rating.choices %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <select name="replacement_kind">
+                                {% for value, label in feedback_form.fields.replacement_kind.choices %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <textarea name="comment" rows="2" placeholder="Комментарий"></textarea>
+                            <button type="submit">Отправить</button>
+                        </form>
+                    </div>
+                {% empty %}
+                    <div class="empty">Для модуля пока нет структурированных материалов. Проверьте запуски pipeline в админке.</div>
+                {% endfor %}
+            </div>
+        </article>
+    {% empty %}
+        <div class="empty">Курс создан, но LLM не вернула модули.</div>
+    {% endfor %}
+</section>
+{% endblock %}
