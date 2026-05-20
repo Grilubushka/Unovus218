@@ -34,6 +34,7 @@ def empty_session() -> dict:
         "selected_options": [],
         "draft_messages": [],
         "history": [],
+        "presentation_cache": {},
     }
 
 
@@ -160,45 +161,77 @@ def render_question(
     index: int,
     selected_codes: list[str] | None = None,
     draft_messages: list[str] | None = None,
+    copy: dict[str, str] | None = None,
 ) -> str:
     step = index + 1
-    support = "Подбираем подходящий вариант" if step < TOTAL_STEPS else "Почти готово"
+    copy = copy or {}
+    title = copy.get("title") or question.title
+    subtitle = copy.get("subtitle") or question.subtitle
+    support = copy.get("support") or ("Подбираем подходящий вариант" if step < TOTAL_STEPS else "Почти готово")
     draft = draft_messages or []
     if question.multi_select:
         selected_count = len(selected_codes or [])
-        manual_hint = f"\n\nМожно выбрать несколько вариантов или написать свой. Выбрано: {selected_count}."
+        default_manual_hint = f"Можно выбрать несколько вариантов или написать свой. Выбрано: {selected_count}."
     else:
-        manual_hint = "\n\nВыбери кнопку или напиши свой вариант."
+        default_manual_hint = "Выбери кнопку или напиши свой вариант."
+
+    manual_hint = copy.get("manual_hint") or default_manual_hint
 
     draft_text = ""
     if draft:
         escaped_draft = escape("\n".join(draft))
         draft_text = f"\n\n<b>Свои варианты:</b>\n{escaped_draft}"
 
+    manual_hint_text = f"\n\n{escape(manual_hint)}" if question.allow_manual and manual_hint else ""
+
     return (
-        f"<b>{escape(question.title)}</b>\n"
-        f"{escape(question.subtitle)}"
-        f"{manual_hint if question.allow_manual else ''}\n\n"
-        f"<b>Шаг {step}/{TOTAL_STEPS}</b> · {support}\n"
+        f"<b>{escape(title)}</b>\n"
+        f"{escape(subtitle)}"
+        f"{manual_hint_text}\n\n"
+        f"<b>Шаг {step}/{TOTAL_STEPS}</b> · {escape(support)}\n"
         f"<b>Прогресс:</b> {progress_bar(index)}"
         f"{draft_text}"
     )
 
 
-def render_completion(profile: dict[str, str]) -> str:
+def render_completion(profile: dict[str, str], copy: dict | None = None) -> str:
     result = get_result(profile)
     specialties_text = ""
     if profile.get("goal_code") == "explore":
         specialties = ", ".join(recommended_specialties(profile)[:5])
-        specialties_text = f"\n<b>Варианты:</b> {escape(specialties)}\n"
+        specialties_text = f"\n• <b>Варианты:</b> {escape(specialties)}"
+
+    copy = copy or {}
+    headline = copy.get("headline") or "Маршрут готов"
+    lead = copy.get("lead") or "Я собрал короткий портрет, чтобы Mini App открыл маршрут без лишнего шума и с понятным первым шагом."
+    highlights = copy.get("highlights") or [
+        {"label": "Направление", "value": _profile_value_raw(profile, "interest", "direction")},
+        {"label": "Результат", "value": _profile_value_raw(profile, "focus", "result")},
+        {"label": "Темп", "value": _profile_value_raw(profile, "time", "weekly_time", "weeklyTime")},
+        {"label": "Уровень", "value": _profile_value_raw(profile, "level")},
+    ]
+    next_step = copy.get("next_step") or "Открой Mini App и начни с первого модуля: там будет стартовая диагностика и ближайшее действие."
+    tone_note = copy.get("tone_note") or result["how_to_use"]
+
+    highlight_lines = []
+    for item in highlights[:5]:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()
+        value = str(item.get("value") or "").strip()
+        if label and value:
+            highlight_lines.append(f"• <b>{escape(label)}:</b> {escape(value)}")
+    highlights_text = "\n".join(highlight_lines)
 
     return (
-        "✅ <b>Онбординг завершен</b>\n\n"
-        f"🏁 <b>{escape(str(result['hero']))}</b>\n\n"
-        f"<b>Направление:</b> {_profile_value(profile, 'interest', 'direction')}\n"
-        f"<b>Ближайший результат:</b> {_profile_value(profile, 'focus', 'result')}\n"
-        f"<b>Темп:</b> {_profile_value(profile, 'time', 'weekly_time', 'weeklyTime')}\n"
-        f"{specialties_text}\n"
+        f"✅ <b>{escape(str(headline))}</b>\n\n"
+        f"🏁 <b>{escape(str(result['hero']))}</b>\n"
+        f"{escape(str(lead))}\n\n"
+        "📌 <b>Портрет маршрута</b>\n"
+        f"{highlights_text}"
+        f"{specialties_text}\n\n"
+        f"🧭 <b>Как двигаться:</b> {escape(str(tone_note))}\n"
+        f"🎯 <b>Следующий шаг:</b> {escape(str(next_step))}\n\n"
         "Профиль сохранен. Дальше маршрут, прогресс и материалы открываются в Mini App."
     )
 
@@ -699,8 +732,12 @@ def _how_to_use(time_code: str, goal_code: str) -> str:
 
 
 def _profile_value(profile: dict[str, str], key: str, *fallback_keys: str) -> str:
+    return escape(_profile_value_raw(profile, key, *fallback_keys))
+
+
+def _profile_value_raw(profile: dict[str, str], key: str, *fallback_keys: str) -> str:
     for candidate in (key, *fallback_keys):
         value = profile.get(candidate)
         if value:
-            return escape(str(value))
+            return str(value)
     return "не указано"

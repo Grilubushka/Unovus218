@@ -51,6 +51,26 @@ DATABASE_PATH=data/bot.sqlite3
 - после анкеты бот сохраняет профиль и показывает кнопку открытия Mini App;
 - `/app` повторно показывает кнопку Mini App для уже собранного профиля.
 
+### LLM-адаптация онбординга
+
+Бот умеет подключать Timeweb AI-агента через OpenAI-compatible Chat Completions API и использовать его только для UX-копирайтинга: переформулировать текст текущего шага, подписи кнопок и финальный итог. Структура квиза, коды ответов и callback-логика остаются фиксированными.
+
+```env
+LLM_ONBOARDING_ENABLED=true
+LLM_AGENT_BASE_URL=https://agent.timeweb.cloud/api/v1/cloud-ai/agents/2dad3aa1-b649-4dbe-ac57-a079192e0abf/v1
+LLM_AGENT_ACCESS_ID=2dad3aa1-b649-4dbe-ac57-a079192e0abf
+LLM_AGENT_TOKEN=your_timeweb_agent_token
+LLM_AGENT_MODEL=gpt-4.1
+LLM_AGENT_TIMEOUT=0
+LLM_AGENT_MAX_TOKENS=500
+LLM_AGENT_PROGRESS_INTERVAL=2
+```
+
+Системные промпты лежат в `bot/application/onboarding_adaptation.py`. Защита от prompt injection сделана в два слоя: пользовательские ответы передаются агенту только как JSON-данные, а ответ агента принимается только как JSON по ожидаемой схеме, чистится, ограничивается по длине и экранируется перед отправкой в Telegram.
+Пока агент думает, бот редактирует центральное сообщение в промежуточное состояние. `LLM_AGENT_TIMEOUT` задается в секундах; значение `0` означает ждать ответ без ограничения по времени.
+`LLM_AGENT_MAX_TOKENS` ограничивает размер JSON-ответа агента, чтобы он не тратил время на длинный вывод.
+`LLM_AGENT_PROGRESS_INTERVAL` задает, как часто обновлять спиннер ожидания в Telegram.
+
 ## Mini App
 
 Mini App реализован на React + Vite. В Docker он собирается в `dist` на Node stage, после чего контейнер отдаёт готовую статику на порту `8080`. Этот же порт отдаёт JSON API для Mini App:

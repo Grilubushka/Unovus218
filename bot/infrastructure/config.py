@@ -3,6 +3,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_LLM_AGENT_ACCESS_ID = "2dad3aa1-b649-4dbe-ac57-a079192e0abf"
 
 
 def load_dotenv(path: str = ".env") -> None:
@@ -24,6 +25,15 @@ class Settings:
         self.miniapp_url = os.environ.get("MINIAPP_URL", "")
         self.state_file = str(resolve_project_path(os.environ.get("STATE_FILE", "bot_state.json")))
         self.database_path = str(resolve_project_path(os.environ.get("DATABASE_PATH", default_database_path())))
+        self.llm_onboarding_enabled = parse_bool(os.environ.get("LLM_ONBOARDING_ENABLED", "true"))
+        self.llm_agent_access_id = os.environ.get("LLM_AGENT_ACCESS_ID", DEFAULT_LLM_AGENT_ACCESS_ID)
+        default_llm_base_url = f"https://agent.timeweb.cloud/api/v1/cloud-ai/agents/{self.llm_agent_access_id}/v1"
+        self.llm_agent_base_url = os.environ.get("LLM_AGENT_BASE_URL", default_llm_base_url)
+        self.llm_agent_token = os.environ.get("LLM_AGENT_TOKEN", "")
+        self.llm_agent_model = os.environ.get("LLM_AGENT_MODEL", "gpt-4.1")
+        self.llm_agent_timeout = parse_float(os.environ.get("LLM_AGENT_TIMEOUT"), 0.0)
+        self.llm_agent_max_tokens = parse_int(os.environ.get("LLM_AGENT_MAX_TOKENS"), 500)
+        self.llm_agent_progress_interval = parse_float(os.environ.get("LLM_AGENT_PROGRESS_INTERVAL"), 2.0)
 
     def validate(self) -> None:
         if not self.bot_token:
@@ -53,6 +63,28 @@ def validate_public_https_url(url: str) -> None:
 
 def default_database_path() -> str:
     return "data/bot.sqlite3"
+
+
+def parse_bool(value: str) -> bool:
+    return value.strip().casefold() not in {"0", "false", "no", "off", "нет"}
+
+
+def parse_float(value: str | None, default: float) -> float:
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def parse_int(value: str | None, default: int) -> int:
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
 
 
 def resolve_project_path(path: str) -> Path:
