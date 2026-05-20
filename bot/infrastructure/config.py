@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def load_dotenv(path: str = ".env") -> None:
@@ -24,3 +25,22 @@ class Settings:
     def validate(self) -> None:
         if not self.bot_token:
             raise RuntimeError("TELEGRAM_BOT_TOKEN не задан. Создай .env по примеру .env.example.")
+        if not self.miniapp_url:
+            raise RuntimeError("MINIAPP_URL не задан. Укажи публичный HTTPS URL Mini App.")
+        validate_public_https_url(self.miniapp_url)
+
+
+def validate_public_https_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise RuntimeError("MINIAPP_URL должен быть публичным HTTPS URL, например https://unovus.arffis.com/")
+
+    forbidden_hosts = {"example.com", "localhost", "127.0.0.1", "0.0.0.0"}
+    if parsed.hostname in forbidden_hosts:
+        raise RuntimeError(
+            f"MINIAPP_URL указывает на служебный адрес {parsed.hostname}. "
+            "Укажи реальный публичный HTTPS-домен Mini App."
+        )
+
+    if "://" in parsed.netloc:
+        raise RuntimeError("MINIAPP_URL содержит лишний протокол. Нужно так: https://unovus.arffis.com/")

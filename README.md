@@ -102,3 +102,33 @@ Telegram commands and Mini App menu button configured.
 ```
 
 Если там напечатался `example.com`, значит контейнер читает старый `.env` или файл `.env` изменён не в той папке.
+
+## Быстрая диагностика на сервере
+
+Проверка контейнера:
+
+```bash
+curl http://localhost:8080/ | grep Прогрессоры
+```
+
+Проверка публичного домена:
+
+```bash
+curl https://unovus.arffis.com/ | grep Прогрессоры
+```
+
+Обе команды должны найти `Прогрессоры`. Если первая работает, а вторая нет, проблема в nginx/reverse proxy, а не в Docker.
+
+Проверка переменных внутри контейнера:
+
+```bash
+docker compose exec progressors-bot sh -lc 'echo $MINIAPP_URL'
+```
+
+Проверка URL прямо в Telegram:
+
+```text
+/debug
+```
+
+Если `/debug` показывает `example.com`, нужно исправить `.env`, пересоздать контейнер и заново выполнить `bot.setup_telegram`.

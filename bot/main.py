@@ -40,6 +40,16 @@ def handle_message(api: TelegramApi, store: JsonStateStore, settings: Settings, 
         api.send_message(chat_id, roadmap_message(user["roadmap"]), roadmap_keyboard(settings.miniapp_url))
         return
 
+    if text == "/debug":
+        api.send_message(
+            chat_id,
+            "Текущая конфигурация бота:\n"
+            f"MINIAPP_URL={settings.miniapp_url}\n"
+            f"STATE_FILE={settings.state_file}\n\n"
+            "Если Mini App открывает example.com, запущен старый контейнер или в .env старый URL.",
+        )
+        return
+
     if "session" not in user:
         api.send_message(chat_id, "Нажми /start, и я соберу профиль для персонального маршрута.")
         return
