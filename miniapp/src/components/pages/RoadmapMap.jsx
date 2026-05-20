@@ -4,8 +4,13 @@ import { BottomNav } from "../BottomNav.jsx";
 import { Toast } from "../Toast.jsx";
 import { TrackTabs } from "../TrackTabs.jsx";
 import { TopicSheet } from "../TopicSheet.jsx";
+
 export function RoadmapMap() {
   const { roadmap, selectedTopic, toast, showToast, setSelectedTopicId } = useApp();
+
+  if (!roadmap?.modules) {
+    return <div className="shell">Загрузка маршрута...</div>;
+  }
 
   return (
     <>

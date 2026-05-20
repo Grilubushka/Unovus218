@@ -6,9 +6,17 @@ export class RoadmapRepository {
     return demoProfiles;
   }
 
-  getRoadmap(profileKey = "programming") {
-    const profile = demoProfiles[profileKey] ?? demoProfiles.python;
+  getRoadmap(profileKey = "python") {
+    const normalizedKey = this.normalizeProfileKey(profileKey);
+    const profile = demoProfiles[normalizedKey] ?? demoProfiles.python;
     return buildRoadmap(profile, sampleData);
+  }
+
+  normalizeProfileKey(key) {
+    if (key === "programming") return "python";
+    if (key === "english") return "english";
+    if (key === "design") return "design";
+    return key;
   }
 }
 
