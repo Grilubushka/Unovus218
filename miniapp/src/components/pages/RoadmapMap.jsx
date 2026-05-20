@@ -1,10 +1,29 @@
-export function RoadmapMap({ roadmap, onSelectTopic }) {
+import { useApp } from "../AppContext.jsx";
+import { Topbar } from "../Topbar.jsx";
+import { BottomNav } from "../BottomNav.jsx";
+import { Toast } from "../Toast.jsx";
+import { TrackTabs } from "../TrackTabs.jsx";
+import { TopicSheet } from "../TopicSheet.jsx";
+export function RoadmapMap() {
+  const { roadmap, selectedTopic, toast, showToast, setSelectedTopicId } = useApp();
+
   return (
-    <main id="roadmap" className="roadmap" aria-label="Карта маршрута">
-      {roadmap.modules.map((module) => (
-        <ModuleBlock key={module.id} module={module} onSelectTopic={onSelectTopic} />
-      ))}
-    </main>
+    <>
+      <div className="shell">
+        <Topbar onToast={showToast} />
+        <TrackTabs />
+        <main id="roadmap" className="roadmap" aria-label="Карта маршрута">
+          {roadmap.modules.map((module) => (
+            <ModuleBlock key={module.id} module={module} onSelectTopic={setSelectedTopicId} />
+          ))}
+        </main>
+      </div>
+      <BottomNav />
+      {selectedTopic && (
+        <TopicSheet topic={selectedTopic} onClose={() => setSelectedTopicId(null)} onToast={showToast} />
+      )}
+      <Toast message={toast} />
+    </>
   );
 }
 

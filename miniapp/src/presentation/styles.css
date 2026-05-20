@@ -85,21 +85,9 @@ button {
   width: 50px;
   height: 50px;
   border-radius: 15px;
-  background: linear-gradient(135deg, var(--pink), var(--red));
-  box-shadow: 0 14px 34px rgba(255, 0, 95, 0.26);
+  background-image: url(src/assets/logo.svg);
+  background-size: cover;
   position: relative;
-}
-
-.logo::after {
-  content: "";
-  position: absolute;
-  width: 25px;
-  height: 25px;
-  left: 13px;
-  top: 12px;
-  border-radius: 7px 14px 14px;
-  background: var(--blue);
-  box-shadow: 12px -8px 0 -4px #ff7ae1, -9px 9px 0 -4px #6fdfff;
 }
 
 .brand-title,
@@ -569,7 +557,7 @@ button {
   width: min(calc(100% - 28px), 452px);
   height: 70px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   padding: 8px;
   border: 1px solid var(--line);

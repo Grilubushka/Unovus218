@@ -1,17 +1,21 @@
-export function BottomNav({ view, onView, onOpenCurrent, onToast }) {
+import { useNavigate, useLocation } from "react-router-dom";
+import { useApp } from "./AppContext.jsx";
+
+export function BottomNav() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { showToast } = useApp();
+
   return (
     <nav className="bottom-nav" aria-label="Навигация">
-      <button className={view === "map" ? "active" : ""} type="button" onClick={() => onView("map")}>
-        ⌁<span>Карта</span>
-      </button>
-      <button type="button" onClick={onOpenCurrent}>
-        ▶<span>Учиться</span>
-      </button>
-      <button className={view === "progress" ? "active" : ""} type="button" onClick={() => onView("progress")}>
-        ⚡<span>Прогресс</span>
-      </button>
-      <button type="button" onClick={() => onToast("Откроется чат с ИИ для корректировки цели, сложности и формата материалов.")}>
+      <button className={pathname === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
         AI<span>Помощник</span>
+      </button>
+      <button className={pathname === "/roadmap" ? "active" : ""} type="button" onClick={() => navigate("/roadmap")}>
+        🔍︎<span>Карта</span>
+      </button>
+      <button className={pathname === "/action" ? "active" : ""} type="button" onClick={() => navigate("/action")}>
+        ▶<span>Учиться</span>
       </button>
     </nav>
   );
