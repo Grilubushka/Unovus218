@@ -1,0 +1,19 @@
+services:
+  progressors-bot:
+    build: .
+    container_name: progressors-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MINIAPP_PORT: 8080
+      STATE_FILE: /app/data/bot_state.json
+      # Поставь true один раз после настройки MINIAPP_URL, чтобы обновить команды и кнопку Mini App.
+      SETUP_TELEGRAM: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - progressors_bot_data:/app/data
+
+volumes:
+  progressors_bot_data:
