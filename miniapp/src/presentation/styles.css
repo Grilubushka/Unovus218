@@ -307,7 +307,7 @@ button {
 
 .module-head {
   position: sticky;
-  top: 72px;
+  top: 0px;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -802,6 +802,8 @@ meter {
   transform: translate(-50%, 0);
 }
 
+
+
 @media (max-width: 380px) {
   .hero h1 {
     font-size: 34px;
@@ -888,4 +890,5 @@ meter {
     margin: 0;
   }
 }
+
 }
