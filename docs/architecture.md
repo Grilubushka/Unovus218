@@ -1,6 +1,6 @@
 # Архитектурная заметка
 
-Прототип устроен по слоям, близким к Clean Architecture. Основной продуктовый вход — Telegram-бот, Mini App используется как визуальный экран маршрута внутри Telegram.
+Прототип устроен по слоям, близким к Clean Architecture. Основной продуктовый вход — Telegram-бот, Mini App используется как основной экран маршрута внутри Telegram.
 
 ## Domain
 
@@ -16,7 +16,7 @@
 
 ## Infrastructure
 
-В Mini App `mockCatalog.js` сейчас заменяет backend и админку. В боте аналогичную роль выполняет `bot/domain/catalog.py`. В реальном сервисе этот слой станет API-клиентом:
+В Mini App `mockCatalog.js` сейчас заменяет backend и админку. В реальном сервисе этот слой станет API-клиентом:
 
 - `GET /api/roadmaps/current`;
 - `POST /api/roadmaps/generate`;
@@ -30,4 +30,4 @@
 
 ## Bot
 
-`bot/main.py` использует Telegram Bot API через long polling без внешних зависимостей. Это удобно для хакатонного прототипа: жюри может пройти сценарий в Telegram, а команду позже можно перевести на webhook, aiogram или FastAPI без изменения доменной логики.
+`bot/main.py` использует Telegram Bot API через long polling без внешних зависимостей. Бот отвечает за онбординг и передачу пользователя в Mini App через `web_app`-кнопку; построение маршрута и дальнейшая работа с прогрессом остаются в Mini App.

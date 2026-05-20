@@ -1,7 +1,8 @@
+"""Контент и правила ветвящегося теста для персонального маршрута обучения."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from html import escape
 
 
 TOTAL_STEPS = 7
@@ -9,6 +10,8 @@ TOTAL_STEPS = 7
 
 @dataclass(frozen=True)
 class QuizOption:
+    """Один вариант ответа, который влияет на будущий профиль пользователя."""
+
     code: str
     label: str
     profile_value: str
@@ -17,6 +20,8 @@ class QuizOption:
 
 @dataclass(frozen=True)
 class QuizQuestion:
+    """Один экран теста: вопрос, смысл шага и набор inline-вариантов."""
+
     code: str
     title: str
     subtitle: str
@@ -27,24 +32,16 @@ class QuizQuestion:
     keyboard_columns: int = 2
 
 
-def empty_session() -> dict:
-    return {
-        "step": 0,
-        "profile": {},
-        "selected_options": [],
-        "draft_messages": [],
-        "history": [],
-    }
-
-
-def current_question(session: dict) -> QuizQuestion | None:
-    step = int(session.get("step", 0))
-    if step >= TOTAL_STEPS:
-        return None
-    return get_question(step, dict(session.get("profile", {})))
+BUILD_MESSAGES: tuple[str, str, str] = (
+    "Сверяю цель и уровень...",
+    "Собираю первые шаги...",
+    "Готовлю маршрут...",
+)
 
 
 def get_question(index: int, profile: dict[str, str] | None = None) -> QuizQuestion:
+    """Возвращает вопрос по номеру шага с учетом уже собранного профиля."""
+
     profile = profile or {}
     if index == 0:
         return _goal_question()
@@ -60,14 +57,19 @@ def get_question(index: int, profile: dict[str, str] | None = None) -> QuizQuest
         return _time_question(profile)
     if index == 6:
         return _constraint_question(profile)
+
     raise IndexError(f"Нет вопроса с индексом {index}.")
 
 
 def get_option(question: QuizQuestion, option_code: str) -> QuizOption | None:
+    """Находит выбранный вариант в конкретном вопросе."""
+
     return next((option for option in question.options if option.code == option_code), None)
 
 
 def create_manual_option(question: QuizQuestion, raw_text: str) -> QuizOption:
+    """Превращает ручной ввод пользователя в обычный вариант ответа для профиля."""
+
     cleaned = " ".join(raw_text.strip().split())[:120]
     if not cleaned:
         cleaned = "свой вариант"
@@ -91,157 +93,102 @@ def create_manual_option(question: QuizQuestion, raw_text: str) -> QuizOption:
 
 
 def create_multi_option(question: QuizQuestion, options: list[QuizOption]) -> QuizOption:
+    """Объединяет несколько выбранных вариантов в один ответ профиля."""
+
+    codes = ",".join(option.code for option in options)
+    labels = ", ".join(option.label for option in options)
+    values = "; ".join(option.profile_value for option in options)
+    tones = ", ".join(option.tone for option in options)
+
     return QuizOption(
-        code=",".join(option.code for option in options),
-        label=", ".join(option.label for option in options),
-        profile_value="; ".join(option.profile_value for option in options),
-        tone=", ".join(option.tone for option in options),
+        code=codes,
+        label=labels,
+        profile_value=values,
+        tone=tones,
     )
 
 
-def apply_answer(session: dict, question: QuizQuestion, option: QuizOption) -> bool:
-    current_step = int(session.get("step", 0))
-    profile: dict[str, str] = dict(session.get("profile", {}))
-    history: list[dict] = list(session.get("history", []))
-    history.append({"step": current_step, "profile": dict(profile)})
+def replace_question_options(question: QuizQuestion, options: tuple[QuizOption, ...]) -> QuizQuestion:
+    """Возвращает тот же вопрос, но с динамически подставленным набором вариантов."""
 
-    profile[question.profile_key] = option.profile_value
-    profile[f"{question.profile_key}_code"] = option.code
-    profile[f"{question.profile_key}_tone"] = option.tone
-
-    next_step = current_step + 1
-    session["step"] = next_step
-    session["profile"] = profile
-    session["selected_options"] = []
-    session["draft_messages"] = []
-    session["history"] = history
-    return next_step >= TOTAL_STEPS
-
-
-def go_back(session: dict) -> bool:
-    history: list[dict] = list(session.get("history", []))
-    if not history:
-        return False
-
-    previous = history.pop()
-    session["step"] = int(previous.get("step", 0))
-    session["profile"] = dict(previous.get("profile", {}))
-    session["selected_options"] = []
-    session["draft_messages"] = []
-    session["history"] = history
-    return True
-
-
-def progress_bar(step_index: int) -> str:
-    filled = "●" * step_index
-    empty = "○" * (TOTAL_STEPS - step_index)
-    percent = round(step_index / TOTAL_STEPS * 100)
-    return f"{filled}{empty} · {percent}%"
-
-
-def render_intro() -> str:
-    return (
-        "✨ <b>Соберем личный маршрут обучения</b>\n\n"
-        "Ответь на 7 коротких вопросов. Можно нажимать кнопки или писать свой вариант с клавиатуры. "
-        "Навык или специальность могут быть любыми: программирование, дизайн, маркетинг, кулинария, "
-        "ветеринария или твой вариант.\n\n"
-        "После онбординга я передам тебя в Mini App, где откроется работа с маршрутом.\n\n"
-        f"<b>Прогресс:</b> {progress_bar(0)}\n"
-        "Начнем?"
+    return QuizQuestion(
+        code=question.code,
+        title=question.title,
+        subtitle=question.subtitle,
+        profile_key=question.profile_key,
+        options=options,
+        allow_manual=question.allow_manual,
+        multi_select=question.multi_select,
+        keyboard_columns=question.keyboard_columns,
     )
 
 
-def render_question(
-    question: QuizQuestion,
-    index: int,
-    selected_codes: list[str] | None = None,
-    draft_messages: list[str] | None = None,
-) -> str:
-    step = index + 1
-    support = "Подбираем подходящий вариант" if step < TOTAL_STEPS else "Почти готово"
-    draft = draft_messages or []
-    if question.multi_select:
-        selected_count = len(selected_codes or [])
-        manual_hint = f"\n\nМожно выбрать несколько вариантов или написать свой. Выбрано: {selected_count}."
-    else:
-        manual_hint = "\n\nВыбери кнопку или напиши свой вариант."
+def get_result(profile: dict[str, str]) -> dict[str, str | tuple[str, str, str]]:
+    """Подбирает итоговый герой-роадмап по собранному профилю пользователя."""
 
-    draft_text = ""
-    if draft:
-        escaped_draft = escape("\n".join(draft))
-        draft_text = f"\n\n<b>Свои варианты:</b>\n{escaped_draft}"
-
-    return (
-        f"<b>{escape(question.title)}</b>\n"
-        f"{escape(question.subtitle)}"
-        f"{manual_hint if question.allow_manual else ''}\n\n"
-        f"<b>Шаг {step}/{TOTAL_STEPS}</b> · {support}\n"
-        f"<b>Прогресс:</b> {progress_bar(index)}"
-        f"{draft_text}"
-    )
-
-
-def render_completion(profile: dict[str, str]) -> str:
-    result = get_result(profile)
-    specialties_text = ""
-    if profile.get("goal_code") == "explore":
-        specialties = ", ".join(recommended_specialties(profile)[:5])
-        specialties_text = f"\n<b>Варианты:</b> {escape(specialties)}\n"
-
-    return (
-        "✅ <b>Онбординг завершен</b>\n\n"
-        f"🏁 <b>{escape(str(result['hero']))}</b>\n\n"
-        f"<b>Направление:</b> {_profile_value(profile, 'interest', 'direction')}\n"
-        f"<b>Ближайший результат:</b> {_profile_value(profile, 'focus', 'result')}\n"
-        f"<b>Темп:</b> {_profile_value(profile, 'time', 'weekly_time', 'weeklyTime')}\n"
-        f"{specialties_text}\n"
-        "Профиль сохранен. Дальше маршрут, прогресс и материалы открываются в Mini App."
-    )
-
-
-def get_result(profile: dict[str, str]) -> dict[str, str]:
     goal_code = profile.get("goal_code", "skill")
+    interest_code = profile.get("interest_code", "custom")
     time_code = profile.get("time_code", "balanced")
     constraint_codes = set(profile.get("constraints_code", "custom").split(","))
 
     base = _base_result(goal_code)
     hero = _hero_name(base["hero"], time_code, constraint_codes)
-    return {"hero": hero, "how_to_use": _how_to_use(time_code, goal_code)}
+    roadmap = f"roadmap://{goal_code}-{interest_code}-{time_code}-placeholder"
 
+    reasons = (
+        base["reason"],
+        f"Маршрут завязан на интерес: {profile.get('interest', 'свой интерес')}.",
+        f"Темп учитывает ресурс: {profile.get('time', 'не указано')} и ограничение: {profile.get('constraints', 'не указано')}.",
+    )
 
-def recommended_specialties(profile: dict[str, str]) -> list[str]:
-    interest_code = profile.get("interest_code", "")
-    if interest_code == "creative_tech":
-        return ["UX/UI дизайнер", "контент-дизайнер", "моушн-дизайнер", "frontend-разработчик", "продакт-дизайнер"]
-    if interest_code == "analytics_logic":
-        return ["аналитик данных", "BI-аналитик", "тестировщик", "финансовый аналитик", "AI-инженер"]
-    if interest_code == "people_communication":
-        return ["преподаватель", "HR-специалист", "менеджер поддержки", "sales-менеджер", "community manager"]
-    if interest_code == "business_media":
-        return ["digital-маркетолог", "SMM-специалист", "project manager", "продюсер", "контент-менеджер"]
-    if interest_code == "health_nature":
-        return ["ветеринарный ассистент", "лаборант", "медицинский регистратор", "экологический волонтер", "кинолог"]
-    if interest_code == "hands_on":
-        return ["повар-кондитер", "электромонтажник", "мастер сервиса", "оператор станка", "техник"]
-    return ["AI-инженер", "аналитик данных", "UX/UI дизайнер", "digital-маркетолог", "project manager"]
+    return {
+        "hero": hero,
+        "roadmap": roadmap,
+        "how_to_use": _how_to_use(time_code, goal_code),
+        "reasons": reasons,
+    }
 
 
 def _goal_question() -> QuizQuestion:
+    """Стартовый вопрос задает главный вектор маршрута."""
+
     return QuizQuestion(
         code="goal",
         title="Куда ведем маршрут?",
         subtitle="Выбери главную цель. От нее зависят следующие вопросы и первый маршрут.",
         profile_key="goal",
         options=(
-            QuizOption("career", "🚀 В карьеру", "хочет быстрее выйти на карьерный результат", "карьерный рывок"),
-            QuizOption("skill", "🧠 Освоить навык", "хочет освоить конкретный навык с понятным результатом", "точечный апгрейд"),
-            QuizOption("exam", "🎓 Учеба / экзамен", "учится ради учебной цели, проекта или экзамена", "учебный фокус"),
-            QuizOption("explore", "🤔 Не знаю, что выбрать", "хочет подобрать несколько подходящих направлений", "поиск направления"),
+            QuizOption(
+                code="career",
+                label="🚀 В карьеру",
+                profile_value="хочет быстрее выйти на карьерный результат",
+                tone="карьерный рывок",
+            ),
+            QuizOption(
+                code="skill",
+                label="🧠 Освоить навык",
+                profile_value="хочет освоить конкретный навык с понятным результатом",
+                tone="точечный апгрейд",
+            ),
+            QuizOption(
+                code="exam",
+                label="🎓 Учеба / экзамен",
+                profile_value="учится ради учебной цели, проекта или экзамена",
+                tone="учебный фокус",
+            ),
+            QuizOption(
+                code="explore",
+                label="🤔 Не знаю, что выбрать",
+                profile_value="хочет подобрать несколько подходящих направлений",
+                tone="поиск направления",
+            ),
         ),
     )
 
 
 def _interest_question(profile: dict[str, str]) -> QuizQuestion:
+    """Второй шаг показывает TOP-10 конкретных навыков или специальностей."""
+
     goal_code = profile.get("goal_code", "skill")
     title_by_goal = {
         "career": "Выбери специальность из TOP-10",
@@ -252,7 +199,7 @@ def _interest_question(profile: dict[str, str]) -> QuizQuestion:
     subtitle_by_goal = {
         "career": "Это популярные направления прямо сейчас. Если твоей специальности нет, просто напиши ее сообщением.",
         "exam": "Это частые учебные и проектные треки. Если нужного нет, просто напиши свой вариант.",
-        "explore": "Выбери интересы, а дальше Mini App предложит направления, которые стоит попробовать.",
+        "explore": "Выбери интересы, а дальше я предложу несколько специальностей, которые стоит попробовать.",
         "skill": "Это популярные навыки для самообучения прямо сейчас. Если нужного нет, просто напиши его сообщением.",
     }
 
@@ -266,6 +213,8 @@ def _interest_question(profile: dict[str, str]) -> QuizQuestion:
 
 
 def seed_top10_options(goal_code: str) -> tuple[QuizOption, ...]:
+    """Возвращает стартовый TOP-10, пока в базе мало пользовательских запросов."""
+
     if goal_code == "career":
         return (
             QuizOption("ai_engineer", "🤖 AI-инженер", "интересуется специальностью AI-инженер", "цифровой трек"),
@@ -319,6 +268,8 @@ def seed_top10_options(goal_code: str) -> tuple[QuizOption, ...]:
 
 
 def _age_question() -> QuizQuestion:
+    """Возраст помогает подобрать тон, нагрузку и карьерно-учебный контекст."""
+
     return QuizQuestion(
         code="age",
         title="Сколько тебе лет?",
@@ -334,12 +285,14 @@ def _age_question() -> QuizQuestion:
 
 
 def _focus_question(profile: dict[str, str]) -> QuizQuestion:
+    """Четвертый вопрос меняется в зависимости от главной цели пользователя."""
+
     goal_code = profile.get("goal_code")
     if goal_code == "career":
         return QuizQuestion(
             code="career_focus",
             title="Что нужно получить первым?",
-            subtitle="Выбери ближайший результат, под который Mini App соберет первые шаги.",
+            subtitle="Выбери ближайший результат, под который соберем первые шаги.",
             profile_key="focus",
             options=(
                 QuizOption("understand_role", "Понять профессию", "хочет понять задачи, требования и вход в профессию", "ориентация в роли"),
@@ -392,7 +345,10 @@ def _focus_question(profile: dict[str, str]) -> QuizQuestion:
 
 
 def _level_question(profile: dict[str, str]) -> QuizQuestion:
-    interest_group = _interest_group(profile.get("interest_code"))
+    """Пятый вопрос меняется под выбранную область интереса."""
+
+    interest_code = profile.get("interest_code")
+    interest_group = _interest_group(interest_code)
     if interest_group == "tech":
         return QuizQuestion(
             code="tech_level",
@@ -520,6 +476,8 @@ def _level_question(profile: dict[str, str]) -> QuizQuestion:
 
 
 def _interest_group(interest_code: str | None) -> str:
+    """Группирует конкретные TOP-10 навыки в типы опыта для следующих вопросов."""
+
     tech = {
         "tech",
         "ai_engineer",
@@ -566,6 +524,8 @@ def _interest_group(interest_code: str | None) -> str:
 
 
 def _time_question(profile: dict[str, str]) -> QuizQuestion:
+    """Шестой вопрос уточняет ресурс с учетом возраста, цели и ближайшего результата."""
+
     goal_code = profile.get("goal_code")
     age_code = profile.get("age_code")
     focus_code = profile.get("focus_code")
@@ -602,6 +562,8 @@ def _time_question(profile: dict[str, str]) -> QuizQuestion:
 
 
 def _constraint_question(profile: dict[str, str]) -> QuizQuestion:
+    """Финальный вопрос меняется по выбранному времени и уточняет ограничения."""
+
     time_code = profile.get("time_code")
     if time_code == "micro":
         return QuizQuestion(
@@ -649,6 +611,8 @@ def _constraint_question(profile: dict[str, str]) -> QuizQuestion:
 
 
 def _base_result(goal_code: str) -> dict[str, str]:
+    """Возвращает основу финального результата по главной цели."""
+
     if goal_code == "career":
         return {
             "hero": "Карьерный маршрут",
@@ -671,6 +635,8 @@ def _base_result(goal_code: str) -> dict[str, str]:
 
 
 def _hero_name(base_hero: str, time_code: str, constraint_codes: set[str]) -> str:
+    """Добавляет к герою идентичность, если выбранный режим явно влияет на маршрут."""
+
     if time_code == "micro":
         return "Маршрут короткими шагами"
     if time_code == "intensive":
@@ -683,6 +649,8 @@ def _hero_name(base_hero: str, time_code: str, constraint_codes: set[str]) -> st
 
 
 def _how_to_use(time_code: str, goal_code: str) -> str:
+    """Формирует короткую инструкцию по использованию будущего роадмапа."""
+
     if time_code == "micro":
         return "Проходи один маленький шаг в день: 10 минут на материал и 5 минут на мини-действие."
     if time_code == "intensive":
@@ -692,11 +660,3 @@ def _how_to_use(time_code: str, goal_code: str) -> str:
     if goal_code == "explore":
         return "Сначала сравни 3-5 направлений через короткие пробы, затем выбери один трек для обучения."
     return "Иди блоками: короткая теория, практика, самопроверка и следующий шаг без накопления лишних материалов."
-
-
-def _profile_value(profile: dict[str, str], key: str, *fallback_keys: str) -> str:
-    for candidate in (key, *fallback_keys):
-        value = profile.get(candidate)
-        if value:
-            return escape(str(value))
-    return "не указано"

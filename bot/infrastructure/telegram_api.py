@@ -14,11 +14,35 @@ class TelegramApi:
             params["offset"] = offset
         return self._request("getUpdates", params).get("result", [])
 
-    def send_message(self, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+    def send_message(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+        parse_mode: str | None = None,
+    ) -> dict:
         payload = {"chat_id": chat_id, "text": text}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         if reply_markup:
             payload["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
-        self._request("sendMessage", payload)
+        return self._request("sendMessage", payload).get("result", {})
+
+    def edit_message_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+        parse_mode: str | None = None,
+    ) -> dict:
+        payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        if reply_markup:
+            payload["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+        result = self._request("editMessageText", payload).get("result", {})
+        return result if isinstance(result, dict) else {}
 
     def answer_callback(self, callback_query_id: str, text: str = "") -> None:
         self._request("answerCallbackQuery", {"callback_query_id": callback_query_id, "text": text})

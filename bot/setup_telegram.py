@@ -13,8 +13,8 @@ def main() -> None:
         {
             "commands": json.dumps(
                 [
-                    {"command": "start", "description": "собрать профиль и маршрут"},
-                    {"command": "roadmap", "description": "показать текущий маршрут"},
+                    {"command": "start", "description": "пройти онбординг"},
+                    {"command": "app", "description": "открыть Mini App"},
                     {"command": "restart", "description": "начать заново"},
                     {"command": "debug", "description": "показать Mini App URL"},
                 ],

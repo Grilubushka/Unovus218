@@ -25,6 +25,8 @@ class Settings:
     def validate(self) -> None:
         if not self.bot_token:
             raise RuntimeError("TELEGRAM_BOT_TOKEN не задан. Создай .env по примеру .env.example.")
+        if self.bot_token == "replace_with_botfather_token":
+            raise RuntimeError("TELEGRAM_BOT_TOKEN в .env нужно заменить на реальный токен BotFather.")
         if not self.miniapp_url:
             raise RuntimeError("MINIAPP_URL не задан. Укажи публичный HTTPS URL Mini App.")
         validate_public_https_url(self.miniapp_url)
