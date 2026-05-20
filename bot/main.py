@@ -1,3 +1,5 @@
+from html import escape
+
 from bot.application.profile_flow import (
     TOTAL_STEPS,
     QuizOption,
@@ -20,7 +22,7 @@ from bot.infrastructure.config import Settings
 from bot.infrastructure.onboarding_db import OnboardingDatabase
 from bot.infrastructure.state_store import JsonStateStore
 from bot.infrastructure.telegram_api import TelegramApi
-from bot.presentation.keyboards import miniapp_keyboard, question_keyboard, start_keyboard
+from bot.presentation.keyboards import miniapp_keyboard, question_keyboard, routes_keyboard, start_keyboard
 
 
 HTML = "HTML"
@@ -76,6 +78,10 @@ def handle_message(
 
     if text in {"/app", "/roadmap"}:
         send_miniapp_entry(api, store, settings, chat_id, user)
+        return
+
+    if text == "/routes":
+        send_routes_page(api, store, database, settings, chat_id, user, 0)
         return
 
     if text == "/debug":
@@ -147,6 +153,11 @@ def handle_callback(
             session_id=session_id,
         )
         send_current_question(api, store, database, chat_id, user)
+        return
+
+    if data.startswith("routes:"):
+        api.answer_callback(callback_id)
+        handle_routes_callback(api, store, database, settings, chat_id, user, data, callback)
         return
 
     session = user.get("session")
@@ -355,7 +366,17 @@ def complete_onboarding(
     profile: dict,
 ) -> None:
     finish_database_session(database, user.get("session") or {}, profile)
+    session = user.get("session") or {}
+    user_id = as_int(session.get(DB_USER_ID)) or chat_id
+    route = build_sample_route(profile)
+    course_id = database.create_course_session(
+        user_id=user_id,
+        quiz_session_id=as_int(session.get(DB_SESSION_ID)),
+        profile=profile,
+        route=route,
+    )
     user["profile"] = profile
+    user["active_route_id"] = course_id
     user.pop("session", None)
     user.pop("roadmap", None)
     store.save_user(chat_id, user)
@@ -425,6 +446,207 @@ def send_miniapp_entry(
         miniapp_keyboard(settings.miniapp_url),
         parse_mode=HTML,
     )
+
+
+def handle_routes_callback(
+    api: TelegramApi,
+    store: JsonStateStore,
+    database: OnboardingDatabase,
+    settings: Settings,
+    chat_id: int,
+    user: dict,
+    data: str,
+    callback: dict,
+) -> None:
+    telegram_user = callback.get("from") or {}
+    user_id = telegram_user_id(telegram_user, chat_id)
+    parts = data.split(":")
+    if len(parts) >= 3 and parts[1] == "page":
+        page = as_int(parts[2]) or 0
+        send_routes_page(api, store, database, settings, chat_id, user, page, user_id=user_id)
+        return
+
+    if len(parts) >= 4 and parts[1] == "detail":
+        route_id = as_int(parts[2])
+        page = as_int(parts[3]) or 0
+        if route_id is not None:
+            send_route_detail(api, store, database, settings, chat_id, user, route_id, page, user_id=user_id)
+        return
+
+    send_routes_page(api, store, database, settings, chat_id, user, 0, user_id=user_id)
+
+
+def send_routes_page(
+    api: TelegramApi,
+    store: JsonStateStore,
+    database: OnboardingDatabase,
+    settings: Settings,
+    chat_id: int,
+    user: dict,
+    page: int,
+    *,
+    user_id: int | None = None,
+) -> None:
+    owner_id = user_id or chat_id
+    routes = database.list_active_routes(owner_id)
+    if not routes:
+        send_or_edit(
+            api,
+            store,
+            chat_id,
+            user,
+            "Пока нет активных маршрутов. Пройди онбординг, и я сохраню первый маршрут в базе.",
+            start_keyboard(),
+        )
+        return
+
+    page = min(max(page, 0), len(routes) - 1)
+    route = routes[page]
+    user["active_route_id"] = route["id"]
+    store.save_user(chat_id, user)
+    send_or_edit(
+        api,
+        store,
+        chat_id,
+        user,
+        render_route_page(route, page, len(routes)),
+        routes_keyboard(page=page, total=len(routes), miniapp_url=settings.miniapp_url, route_id=route["id"]),
+        parse_mode=HTML,
+    )
+
+
+def send_route_detail(
+    api: TelegramApi,
+    store: JsonStateStore,
+    database: OnboardingDatabase,
+    settings: Settings,
+    chat_id: int,
+    user: dict,
+    route_id: int,
+    page: int,
+    *,
+    user_id: int,
+) -> None:
+    route = database.get_course_session(route_id, user_id=user_id)
+    if route is None:
+        send_routes_page(api, store, database, settings, chat_id, user, page, user_id=user_id)
+        return
+
+    send_or_edit(
+        api,
+        store,
+        chat_id,
+        user,
+        render_route_detail(route),
+        routes_keyboard(page=page, total=max(len(database.list_active_routes(user_id)), 1), miniapp_url=settings.miniapp_url, route_id=route_id),
+        parse_mode=HTML,
+    )
+
+
+def render_route_page(route: dict, page: int, total: int) -> str:
+    profile = route["profile"]
+    modules = route["route"]
+    title = route_title(route)
+    current_module = int(route.get("current_module") or 0)
+    total_modules = max(int(route.get("total_modules") or len(modules) or 1), 1)
+    progress = 100 if route.get("status") == "completed" else round(current_module / total_modules * 100)
+    next_title = modules[current_module]["title"] if current_module < len(modules) else "маршрут завершён"
+    return (
+        f"🧭 <b>Мои маршруты</b> · {page + 1}/{total}\n\n"
+        f"<b>{escape(title)}</b>\n"
+        f"Статус: {escape(str(route.get('status') or 'active'))}\n"
+        f"Прогресс: {progress}% · модулей {current_module}/{total_modules}\n"
+        f"Цель: {escape(str(profile.get('goal') or 'не указано'))}\n"
+        f"Следующий шаг: {escape(str(next_title))}\n\n"
+        "Листай маршруты стрелками или открывай выбранный в Mini App."
+    )
+
+
+def render_route_detail(route: dict) -> str:
+    modules = route["route"]
+    lines = [
+        f"🧭 <b>{escape(route_title(route))}</b>",
+        "",
+        f"ID маршрута: <code>{route['id']}</code>",
+        f"Статус: {escape(str(route.get('status') or 'active'))}",
+        "",
+        "<b>Модули:</b>",
+    ]
+    for index, module in enumerate(modules, start=1):
+        lines.append(f"{index}. {escape(str(module.get('title') or f'Модуль {index}'))}")
+        outcome = module.get("outcome") or module.get("description")
+        if outcome:
+            lines.append(f"   {escape(str(outcome))}")
+    return "\n".join(lines)
+
+
+def route_title(route: dict) -> str:
+    profile = route.get("profile") or {}
+    if profile.get("interest"):
+        return str(profile["interest"]).replace("интересуется ", "").replace("хочет ", "").capitalize()
+    modules = route.get("route") or []
+    if modules:
+        return str(modules[0].get("title") or "Персональный маршрут")
+    return "Персональный маршрут"
+
+
+def build_sample_route(profile: dict[str, str]) -> list[dict]:
+    interest = profile.get("interest", "выбранная тема")
+    focus = profile.get("focus", "первый результат")
+    time = profile.get("time", "комфортный темп")
+    level = profile.get("level", "стартовый уровень")
+    return [
+        {
+            "title": "Старт и диагностика",
+            "description": f"Уточнить цель: {interest}.",
+            "duration": "1 неделя",
+            "outcome": f"Понятная стартовая точка с учётом: {level}.",
+            "practice": "Собрать короткий список задач, которые хочется уметь решать.",
+            "checkpoint": "Сформулирован первый измеримый результат.",
+            "skills": ["цель", "диагностика", "план"],
+            "materials": [
+                sample_material("Статья", "Как определить стартовый уровень", "База знаний Прогрессоров", "15 мин", "Прочитать и отметить знакомые темы."),
+                sample_material("Практика", "Мини-аудит навыков", "Рабочий лист", "20 мин", "Заполнить чек-лист и выбрать пробелы."),
+            ],
+        },
+        {
+            "title": "База без перегруза",
+            "description": f"Закрыть минимум, который нужен под запрос: {focus}.",
+            "duration": "1-2 недели",
+            "outcome": "Пользователь понимает базовые термины и может повторить простые действия.",
+            "practice": "Сделать 3 коротких упражнения по материалам.",
+            "checkpoint": "Мини-тест на понимание базовых понятий.",
+            "skills": ["база", "практика", "самопроверка"],
+            "materials": [
+                sample_material("Видео", "Базовое объяснение темы", "Открытый видеокурс", "18 мин", "Посмотреть и выписать 5 ключевых идей."),
+                sample_material("Практика", "Тренировка базового действия", "Открытый тренажёр", "30 мин", "Повторить действие по инструкции."),
+                sample_material("Мини-тест", "Проверка базы", "Самопроверка", "7 мин", "Ответить на вопросы без подсказок."),
+            ],
+        },
+        {
+            "title": "Первый видимый результат",
+            "description": f"Собрать результат в режиме: {time}.",
+            "duration": "1-2 недели",
+            "outcome": "Есть небольшой артефакт, который можно показать или использовать.",
+            "practice": "Собрать мини-проект и описать, что получилось.",
+            "checkpoint": "Финальная проверка результата по критериям.",
+            "skills": ["проект", "рефлексия", "следующий шаг"],
+            "materials": [
+                sample_material("Практика", "Мини-проект по выбранной теме", "Проектный шаблон", "45 мин", "Собрать результат по шагам."),
+                sample_material("Статья", "Как улучшить первый результат", "База знаний Прогрессоров", "12 мин", "Найти 2 улучшения для следующей итерации."),
+            ],
+        },
+    ]
+
+
+def sample_material(kind: str, title: str, source: str, duration: str, interaction: str) -> dict:
+    return {
+        "kind": kind,
+        "title": title,
+        "source": source,
+        "duration": duration,
+        "interaction": interaction,
+    }
 
 
 def send_or_edit(

@@ -12,7 +12,7 @@ export function Hero({ roadmap, source, loading, error, onOpenCurrent }) {
           <span>всего маршрута</span>
         </div>
         <div>
-          <strong>{roadmap.profile.routeMode}</strong>
+          <strong>{roadmap.profile.routeModeLabel ?? roadmap.profile.routeMode}</strong>
           <span>режим сборки</span>
         </div>
       </div>

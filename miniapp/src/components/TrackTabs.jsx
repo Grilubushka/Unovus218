@@ -1,9 +1,9 @@
 import { SectionHead } from "./SectionHead.jsx";
 
 const TRACK_TABS = [
-  ["programming", "Python"],
+  ["python", "Python"],
   ["english", "English"],
-  ["cooking", "Cooking"],
+  ["design", "Figma"],
 ];
 
 export function TrackTabs({ activeProfile, onChange }) {

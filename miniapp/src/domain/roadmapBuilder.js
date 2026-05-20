@@ -1,151 +1,163 @@
-const MODES = {
-  quick_start: { maxModules: 3, maxTopics: 12, materialsPerTopic: 2 },
-  balanced: { maxModules: 4, maxTopics: 16, materialsPerTopic: 2 },
-  career: { maxModules: 4, maxTopics: 18, materialsPerTopic: 3 },
-  supportive: { maxModules: 3, maxTopics: 10, materialsPerTopic: 1 },
+const MODE_LABELS = {
+  quick_start: "быстрый старт",
+  balanced: "сбалансированный",
+  career: "карьерный",
+  supportive: "мягкий",
 };
 
-export function normalizeProfile(profile, catalog) {
-  const raw = `${profile.goal} ${profile.direction} ${profile.result}`.toLowerCase();
-  const domainSlug = pickDomain(raw, profile.direction);
-  const tracks = catalog.tracks.filter((track) => track.domainSlug === domainSlug);
-  const track = pickTrack(raw, tracks);
-  const level = profile.experience === "none" ? "beginner" : profile.experience;
-  const routeMode = pickMode(profile);
+export function buildRoadmap(profile, sampleData) {
+  const route = pickRoute(profile, sampleData.routes);
+  const materialsById = new Map(sampleData.materials.map((material) => [material.id, material]));
+  const items = route.items
+    .map((item) => ({ ...item, material: materialsById.get(item.material_id) }))
+    .filter((item) => item.material?.is_published)
+    .sort((a, b) => a.position - b.position);
+
+  const normalizedProfile = normalizeProfile(profile, route);
+  const modules = buildModules(route, items, normalizedProfile);
+  const progress = calculateRoadmapProgress(modules);
 
   return {
-    ...profile,
-    domainSlug,
-    trackSlug: track.slug,
-    level,
-    routeMode,
-    constraints: MODES[routeMode] ?? MODES.balanced,
-  };
-}
-
-export function buildRoadmap(profile, catalog) {
-  const normalized = normalizeProfile(profile, catalog);
-  const track = catalog.tracks.find((item) => item.slug === normalized.trackSlug);
-  const modules = catalog.modules
-    .filter((module) => module.trackSlug === track.slug)
-    .slice(0, normalized.constraints.maxModules)
-    .map((module) => attachSections(module, normalized, catalog));
-
-  const selectedModules = limitTopics(modules, normalized.constraints.maxTopics);
-  const progress = Math.round(
-    selectedModules.reduce((sum, module) => sum + module.progress, 0) / selectedModules.length,
-  );
-
-  return {
-    id: "roadmap-demo",
-    title: track.title,
-    domainTitle: catalog.domains.find((domain) => domain.slug === normalized.domainSlug).title,
-    explanation: explainRoadmap(normalized, track),
-    profile: normalized,
-    modules: selectedModules,
+    id: `sample-route-${route.id}`,
+    title: route.goal,
+    domainTitle: route.difficulty,
+    explanation: route.explanation,
+    profile: normalizedProfile,
+    modules,
     progress,
     stats: [
-      { value: countTopics(selectedModules), label: "ключевых тем вместо полного справочника", tone: "blue" },
-      { value: track.duration, label: `при нагрузке ${profile.weeklyTime} ч/нед.`, tone: "green" },
-      { value: "1", label: "итоговый результат, который можно показать", tone: "pink" },
-      { value: "RU", label: "только бесплатные русскоязычные материалы", tone: "plain" },
+      { value: String(items.length), label: "материалов в упорядоченном маршруте", tone: "blue" },
+      { value: minutesLabel(route.total_duration_minutes), label: "примерная длительность", tone: "green" },
+      { value: route.status, label: "статус образца маршрута", tone: "pink" },
+      { value: "RU", label: "опубликованные русскоязычные материалы", tone: "plain" },
     ],
   };
 }
 
-function pickDomain(raw, direction) {
-  if (direction === "english" || raw.includes("англ")) return "english";
-  if (direction === "cooking" || raw.includes("готов") || raw.includes("кулин")) return "cooking";
-  return "programming";
+function pickRoute(profile, routes) {
+  return routes.find((route) => route.id === profile.routeId) ?? routes[0];
 }
 
-function pickTrack(raw, tracks) {
-  if (raw.includes("сайт") || raw.includes("frontend")) {
-    return tracks.find((track) => track.slug.includes("frontend")) ?? tracks[0];
-  }
-  if (raw.includes("путеше")) {
-    return tracks.find((track) => track.slug.includes("travel")) ?? tracks[0];
-  }
-  if (raw.includes("ужин")) {
-    return tracks.find((track) => track.slug.includes("dinner")) ?? tracks[0];
-  }
-  return tracks[0];
+function normalizeProfile(profile, route) {
+  const routeMode = pickMode(profile, route);
+  return {
+    ...profile,
+    domainSlug: profile.direction,
+    trackSlug: `route-${route.id}`,
+    level: route.difficulty,
+    routeMode,
+    routeModeLabel: MODE_LABELS[routeMode] ?? routeMode,
+    constraints: {
+      materialsPerTopic: profile.formats?.length >= 3 ? 3 : 2,
+    },
+  };
 }
 
-function pickMode(profile) {
-  if (profile.motivation === "career") return "career";
-  if (profile.motivation === "support") return "supportive";
-  if (Number(profile.weeklyTime) <= 2) return "supportive";
+function pickMode(profile, route) {
+  if (profile.motivation === "career" || route.status === "verified") return "career";
+  if (profile.motivation === "support" || Number(profile.weeklyTime) <= 3) return "supportive";
   if (profile.result === "try_fast") return "quick_start";
   return "balanced";
 }
 
-function attachSections(module, profile, catalog) {
-  const sections = catalog.sections
-    .filter((section) => section.moduleId === module.id)
-    .map((section) => ({
-      ...section,
-      topics: catalog.topics
-        .filter((topic) => topic.sectionId === section.id)
-        .filter((topic) => topic.importance === "core" || profile.routeMode === "career")
-        .map((topic) => ({
-          ...topic,
-          materials: rankMaterials(topic, profile, catalog.materials).slice(0, profile.constraints.materialsPerTopic),
-        })),
-    }))
-    .filter((section) => section.topics.length > 0);
-
-  return { ...module, sections, progress: calculateModuleProgress(sections) };
+function buildModules(route, items, profile) {
+  const groups = groupItems(items);
+  return groups.map((group, moduleIndex) => {
+    const topics = group.items.map((item, topicIndex) => topicFromRouteItem(route, item, moduleIndex, topicIndex, profile));
+    const progress = moduleIndex === 0 ? 55 : moduleIndex === 1 ? 20 : 0;
+    return {
+      id: `route-${route.id}-module-${moduleIndex + 1}`,
+      title: group.title,
+      goal: group.goal,
+      duration: minutesLabel(group.minutes),
+      progress,
+      status: progress === 100 ? "completed" : progress > 0 ? "current" : "locked",
+      sections: [
+        {
+          id: `route-${route.id}-section-${moduleIndex + 1}`,
+          title: group.section,
+          topics,
+        },
+      ],
+    };
+  });
 }
 
-function rankMaterials(topic, profile, materials) {
+function groupItems(items) {
+  const groups = [];
+  for (let index = 0; index < items.length; index += 2) {
+    const groupItems = items.slice(index, index + 2);
+    const firstTopic = groupItems[0]?.material?.topic ?? "Материалы";
+    const minutes = groupItems.reduce((sum, item) => sum + Number(item.material.duration_minutes ?? 0), 0);
+    groups.push({
+      title: index === 0 ? "Модуль 1. Старт" : index === 2 ? "Модуль 2. Практика" : "Модуль 3. Результат",
+      goal: groupItems[groupItems.length - 1]?.expected_outcome ?? "Закрыть следующий шаг маршрута.",
+      section: firstTopic,
+      minutes,
+      items: groupItems,
+    });
+  }
+  return groups;
+}
+
+function topicFromRouteItem(route, item, moduleIndex, topicIndex, profile) {
+  const material = item.material;
+  const progress = moduleIndex === 0 && topicIndex === 0 ? 100 : moduleIndex === 0 ? 35 : 0;
+  return {
+    id: `route-${route.id}-topic-${item.id}`,
+    title: material.topic || material.title,
+    progress,
+    status: progress === 100 ? "completed" : progress > 0 ? "current" : "locked",
+    description: material.summary,
+    skills: skillsFor(material),
+    competency: item.expected_outcome,
+    practice: item.reason,
+    checkpoint: material.check_questions?.[0]?.question,
+    materials: rankMaterials([material], profile),
+  };
+}
+
+function rankMaterials(materials, profile) {
   return materials
-    .filter((material) => material.topicId === topic.id && material.language === "ru" && material.isFree)
     .map((material) => ({
-      ...material,
+      id: `material-${material.id}`,
+      format: material.format,
+      title: material.title,
+      source: material.url ? new URL(material.url).hostname : "Открытый источник",
+      url: material.url,
+      minutes: material.duration_minutes,
+      duration: minutesLabel(material.duration_minutes),
+      language: material.language,
+      isFree: true,
+      level: material.difficulty,
+      hasPractice: material.format === "mixed" || material.format === "course",
+      quality: material.quality_score,
       score:
-        material.quality * 0.35 +
-        (profile.formats.includes(material.format) ? 0.25 : 0) +
-        (material.level === profile.level || material.level === "beginner" ? 0.2 : 0) +
-        (material.hasPractice ? 0.2 : 0),
+        Number(material.route_fit_score ?? 0) * 0.45 +
+        Number(material.quality_score ?? 0) * 0.35 +
+        (profile.formats?.includes(material.format) ? 0.2 : 0),
     }))
     .sort((a, b) => b.score - a.score);
 }
 
-function limitTopics(modules, maxTopics) {
-  let taken = 0;
-  return modules
-    .map((module) => ({
-      ...module,
-      sections: module.sections
-        .map((section) => {
-          const remaining = Math.max(maxTopics - taken, 0);
-          const topics = section.topics.slice(0, remaining);
-          taken += topics.length;
-          return { ...section, topics };
-        })
-        .filter((section) => section.topics.length > 0),
-    }))
-    .filter((module) => module.sections.length > 0);
+function skillsFor(material) {
+  return [
+    material.topic,
+    material.difficulty,
+    material.format,
+  ].filter(Boolean);
 }
 
-function calculateModuleProgress(sections) {
-  const topics = sections.flatMap((section) => section.topics);
-  if (!topics.length) return 0;
-  return Math.round(topics.reduce((sum, topic) => sum + topic.progress, 0) / topics.length);
+function calculateRoadmapProgress(modules) {
+  if (!modules.length) return 0;
+  return Math.round(modules.reduce((sum, module) => sum + module.progress, 0) / modules.length);
 }
 
-function countTopics(modules) {
-  return modules.flatMap((module) => module.sections).flatMap((section) => section.topics).length;
-}
-
-function explainRoadmap(profile, track) {
-  const modeText = {
-    quick_start: "быстрый старт без лишних продвинутых веток",
-    balanced: "сбалансированный темп с теорией, практикой и тестами",
-    career: "карьерный маршрут с упором на применимые задачи и портфолио",
-    supportive: "мягкий маршрут маленькими шагами, чтобы не перегореть",
-  };
-
-  return `Маршрут «${track.title}» собран как ${modeText[profile.routeMode]}. Учитываем возраст, опыт, ${profile.weeklyTime} ч/нед. и любимый формат материалов.`;
+function minutesLabel(minutes) {
+  const value = Number(minutes || 0);
+  if (value <= 0) return "не указано";
+  if (value < 60) return `${value} мин`;
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
+  return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
 }

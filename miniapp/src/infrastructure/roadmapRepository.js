@@ -1,5 +1,5 @@
 import { buildRoadmap } from "../domain/roadmapBuilder.js";
-import { catalog, demoProfiles } from "./mockCatalog.js";
+import { demoProfiles, sampleData } from "./mockCatalog.js";
 
 export class RoadmapRepository {
   getDemoProfiles() {
@@ -7,8 +7,8 @@ export class RoadmapRepository {
   }
 
   getRoadmap(profileKey = "programming") {
-    const profile = demoProfiles[profileKey] ?? demoProfiles.programming;
-    return buildRoadmap(profile, catalog);
+    const profile = demoProfiles[profileKey] ?? demoProfiles.python;
+    return buildRoadmap(profile, sampleData);
   }
 }
 
