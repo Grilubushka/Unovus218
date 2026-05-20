@@ -18,7 +18,7 @@ export function Hero({ roadmap, source, loading, error, onOpenCurrent }) {
       </div>
       <div className="actions">
         <button className="btn primary" type="button" onClick={() => navigate("/roadmap")}>
-          К карте
+          К маршрутам
         </button>
         <button className="btn ghost" type="button" onClick={() => navigate("/action")}>
           Продолжить

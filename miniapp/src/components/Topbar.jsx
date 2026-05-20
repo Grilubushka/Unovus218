@@ -1,6 +1,11 @@
 import Lottie from "lottie-react";
 import coinAnimation from "../assets/coin.json"; 
+import { useApp } from "./AppContext.jsx";
+
 export function Topbar({ onToast }) {
+  const app = useApp();
+  const coinBalance = app?.coinBalance ?? 128;
+
   return (
     <header className="topbar">
       <div className="brand">
@@ -20,7 +25,7 @@ export function Topbar({ onToast }) {
           loop={true}
           autoplay={true}
           style={{ width: 28, height: 28 }}
-        /> 128
+        /> {coinBalance}
       </button>
     </header>
   );

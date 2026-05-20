@@ -41,6 +41,19 @@ export class ApiRoadmapRepository {
   async saveFeedback({ courseId, moduleIndex, feedback, telegramUserId }) {
     return postJson("/api/feedback", { courseId, moduleIndex, feedback, telegramUserId });
   }
+
+  async uploadCertificate({ file, telegramUserId }) {
+    const dataUrl = await fileToDataUrl(file);
+    const result = await postJson("/api/certificates/upload", {
+      telegramUserId,
+      title: file.name,
+      fileName: file.name,
+      fileType: file.type || "application/octet-stream",
+      size: file.size,
+      dataUrl,
+    });
+    return result.certificate;
+  }
 }
 
 async function postJson(url, payload) {
@@ -53,4 +66,13 @@ async function postJson(url, payload) {
     throw new Error(`${url} failed: ${response.status}`);
   }
   return response.json();
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
 }

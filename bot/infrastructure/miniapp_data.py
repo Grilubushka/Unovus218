@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
+from datetime import datetime
 import json
+import mimetypes
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -96,6 +100,45 @@ class MiniAppDataRepository:
             db.commit()
         return {"ok": True}
 
+    def upload_certificate(self, payload: dict[str, Any], telegram_user_id: int | None = None) -> dict[str, Any]:
+        with self._connect() as db:
+            if not self._has_certificate_schema(db):
+                return {"ok": False, "error": "certificate_schema_missing"}
+
+            user_id = self._resolve_certificate_user_id(db, telegram_user_id)
+            title = str(payload.get("title") or payload.get("fileName") or "Сертификат").strip()[:160]
+            file_type = str(payload.get("fileType") or "application/octet-stream").strip()[:120]
+            file_name = self._safe_file_name(str(payload.get("fileName") or title), file_type)
+            file_bytes = self._decode_data_url(str(payload.get("dataUrl") or ""))
+            if len(file_bytes) > 12 * 1024 * 1024:
+                return {"ok": False, "error": "file_too_large"}
+
+            target_dir = Path(self.database_path).parent / "certificates" / str(user_id)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            local_path = target_dir / f"{timestamp}_{file_name}"
+            local_path.write_bytes(file_bytes)
+
+            unique_id = f"miniapp-{user_id}-{timestamp}-{abs(hash(local_path.name))}"
+            cursor = db.execute(
+                """
+                INSERT INTO user_certificates (
+                    telegram_user_id,
+                    title,
+                    file_type,
+                    telegram_file_id,
+                    telegram_file_unique_id,
+                    local_path,
+                    source
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, title or "Сертификат", file_type, unique_id, unique_id, str(local_path), "miniapp"),
+            )
+            db.commit()
+            certificate = self._certificate_by_id(db, int(cursor.lastrowid))
+        return {"ok": True, "certificate": certificate}
+
     def _connect(self) -> sqlite3.Connection:
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.database_path)
@@ -109,6 +152,17 @@ class MiniAppDataRepository:
             SELECT 1
             FROM sqlite_master
             WHERE type = 'table' AND name = 'course_sessions'
+            """
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def _has_certificate_schema(db: sqlite3.Connection) -> bool:
+        row = db.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'user_certificates'
             """
         ).fetchone()
         return row is not None
@@ -151,6 +205,18 @@ class MiniAppDataRepository:
             (telegram_user_id,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    @staticmethod
+    def _certificate_by_id(db: sqlite3.Connection, certificate_id: int) -> dict[str, Any]:
+        row = db.execute(
+            """
+            SELECT id, title, file_type, local_path, source, uploaded_at
+            FROM user_certificates
+            WHERE id = ?
+            """,
+            (certificate_id,),
+        ).fetchone()
+        return dict(row) if row is not None else {}
 
     @staticmethod
     def _answers(db: sqlite3.Connection, session_id: int) -> list[dict[str, Any]]:
@@ -343,6 +409,56 @@ class MiniAppDataRepository:
             """,
             (course_id, user_id, module_index, event_name, json.dumps(payload, ensure_ascii=False)),
         )
+
+    @staticmethod
+    def _resolve_certificate_user_id(db: sqlite3.Connection, telegram_user_id: int | None) -> int:
+        if telegram_user_id is not None:
+            return telegram_user_id
+
+        row = db.execute(
+            """
+            SELECT telegram_user_id
+            FROM course_sessions
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is not None:
+            return int(row["telegram_user_id"])
+
+        row = db.execute(
+            """
+            SELECT telegram_user_id
+            FROM users
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return int(row["telegram_user_id"]) if row is not None else 0
+
+    @staticmethod
+    def _decode_data_url(data_url: str) -> bytes:
+        if not data_url:
+            raise ValueError("dataUrl is required")
+        encoded = data_url.split(",", 1)[1] if "," in data_url else data_url
+        try:
+            return base64.b64decode(encoded, validate=True)
+        except binascii.Error as error:
+            raise ValueError("invalid dataUrl") from error
+
+    @staticmethod
+    def _safe_file_name(file_name: str, file_type: str) -> str:
+        raw_name = Path(file_name).name.strip() or "certificate"
+        allowed = []
+        for char in raw_name:
+            if char.isalnum() or char in {".", "-", "_"}:
+                allowed.append(char)
+            elif char.isspace():
+                allowed.append("_")
+        safe_name = "".join(allowed).strip("._") or "certificate"
+        if "." not in safe_name:
+            safe_name += mimetypes.guess_extension(file_type) or ".bin"
+        return safe_name[:120]
 
     @staticmethod
     def _loads(value: str | None, fallback: Any) -> Any:

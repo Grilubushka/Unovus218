@@ -7,7 +7,7 @@ import { TopicSheet } from "../TopicSheet.jsx";
 import { useRef, useEffect } from "react";
 
 export function RoadmapMap() {
-  const { roadmap, selectedTopic, toast, showToast, setSelectedTopicId } = useApp();
+  const { markTopic, roadmap, saveTopicFeedback, selectedTopic, toast, showToast, setSelectedTopicId } = useApp();
   const containerRef = useRef(null);
   const lastTopicRef = useRef(null);
 
@@ -29,7 +29,7 @@ export function RoadmapMap() {
         <main 
           id="roadmap" 
           className="roadmap" 
-          aria-label="Карта маршрута"
+          aria-label="Маршруты"
           ref={containerRef}
         >
           {/* <ModuleBlock key={module.id} module={module} onSelectTopic={setSelectedTopicId} /> */}
@@ -52,7 +52,13 @@ export function RoadmapMap() {
       </div>
       <BottomNav />
       {selectedTopic && (
-        <TopicSheet topic={selectedTopic} onClose={() => setSelectedTopicId(null)} onToast={showToast} />
+        <TopicSheet
+          topic={selectedTopic}
+          onClose={() => setSelectedTopicId(null)}
+          onFeedback={saveTopicFeedback}
+          onMarkModule={markTopic}
+          onToast={showToast}
+        />
       )}
       <Toast message={toast} />
     </>

@@ -27,11 +27,23 @@ class MiniAppRequestHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path not in {"/api/progress/mark", "/api/feedback"}:
+        if parsed.path not in {"/api/progress/mark", "/api/feedback", "/api/certificates/upload"}:
             self.send_error(404)
             return
 
         payload = self.read_json()
+        if parsed.path == "/api/certificates/upload":
+            try:
+                result = self.repository.upload_certificate(payload, as_int(payload.get("telegramUserId")))
+            except ValueError as error:
+                self.send_json({"ok": False, "error": str(error)}, status=400)
+                return
+            except Exception as error:
+                self.send_json({"ok": False, "error": str(error)}, status=500)
+                return
+            self.send_json(result, status=201 if result.get("ok") else 400)
+            return
+
         course_id = as_int(payload.get("courseId"))
         module_index = as_int(payload.get("moduleIndex"))
         user_id = as_int(payload.get("telegramUserId"))

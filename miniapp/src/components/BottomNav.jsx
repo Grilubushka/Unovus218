@@ -1,22 +1,35 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { useApp } from "./AppContext.jsx";
+
+const NAV_ITEMS = [
+  { path: "/", icon: "ID", label: "Профиль" },
+  { path: "/roadmap", icon: "⌁", label: "Маршруты" },
+  { path: "/action", icon: "▶", label: "Учиться" },
+  { path: "/achievements", icon: "★", label: "Награды" },
+  { path: "/map", icon: "⌕", label: "Карта" },
+];
 
 export function BottomNav() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { showToast } = useApp();
 
   return (
     <nav className="bottom-nav" aria-label="Навигация">
-      <button className={pathname === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
-        ID<span>Профиль</span>
-      </button>
-      <button className={pathname === "/roadmap" ? "active" : ""} type="button" onClick={() => navigate("/roadmap")}>
-        🔍︎<span>Карта</span>
-      </button>
-      <button className={pathname === "/action" ? "active" : ""} type="button" onClick={() => navigate("/action")}>
-        ▶<span>Учиться</span>
-      </button>
+      {NAV_ITEMS.map((item) => {
+        const isActive = pathname === item.path;
+        return (
+          <button
+            key={item.path}
+            className={isActive ? "active" : ""}
+            type="button"
+            aria-current={isActive ? "page" : undefined}
+            aria-label={item.label}
+            onClick={() => navigate(item.path)}
+          >
+            <span className="nav-icon">{item.icon}</span>
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
     </nav>
   );
 }

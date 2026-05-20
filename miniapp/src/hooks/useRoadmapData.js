@@ -55,9 +55,17 @@ export function useRoadmapData(activeProfile, telegramUserId) {
     });
   }
 
+  async function uploadCertificate(file) {
+    const certificate = await apiRepository.uploadCertificate({ file, telegramUserId });
+    const roadmap = await apiRepository.getRoadmap(telegramUserId);
+    setState({ roadmap, loading: false, source: "database", error: "" });
+    return certificate;
+  }
+
   return {
     ...state,
     markModule,
     saveFeedback,
+    uploadCertificate,
   };
 }

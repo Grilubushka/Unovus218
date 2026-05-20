@@ -5,7 +5,7 @@ import { Toast } from "../Toast.jsx";
 import { TopicSheetMini } from "../TopicSheetMini.jsx";
 
 export function NextAction() {
-  const { currentTopic, openCurrentTopic, showToast, toast } = useApp();
+  const { currentTopic, markTopic, openCurrentTopic, saveTopicFeedback, showToast, toast } = useApp();
 
   return (
     <>
@@ -15,6 +15,8 @@ export function NextAction() {
           <TopicSheetMini 
             topic={currentTopic} 
             onClose={() => {}} 
+            onFeedback={saveTopicFeedback}
+            onMarkModule={markTopic}
             onToast={showToast} 
           />
         )}

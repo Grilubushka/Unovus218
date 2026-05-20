@@ -79,6 +79,7 @@ Mini App реализован на React + Vite. В Docker он собирает
 - `GET /api/roadmap?telegram_user_id=...` — читает маршрут конкретного Telegram-пользователя;
 - `POST /api/progress/mark` — записывает завершение модуля в `course_sessions` и `course_module_events`;
 - `POST /api/feedback` — записывает обратную связь в `course_module_events`.
+- `POST /api/certificates/upload` — сохраняет PDF или изображение сертификата из Mini App в `data/certificates` и `user_certificates`.
 
 Если в базе нет маршрутов, Mini App покажет демо-данные, чтобы интерфейс не ломался.
 
