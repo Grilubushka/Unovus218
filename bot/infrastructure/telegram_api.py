@@ -1,6 +1,8 @@
 import json
+import socket
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from urllib.error import HTTPError
 
 
@@ -51,7 +53,7 @@ class TelegramApi:
         data = urllib.parse.urlencode(payload).encode("utf-8")
         request = urllib.request.Request(f"{self.base_url}/{method}", data=data)
         try:
-            with urllib.request.urlopen(request, timeout=40) as response:
+            with force_ipv4_dns(), urllib.request.urlopen(request, timeout=40) as response:
                 body = response.read().decode("utf-8")
         except HTTPError as error:
             body = error.read().decode("utf-8")
@@ -60,3 +62,17 @@ class TelegramApi:
         if not result.get("ok"):
             raise RuntimeError(result)
         return result
+
+
+@contextmanager
+def force_ipv4_dns():
+    original_getaddrinfo = socket.getaddrinfo
+
+    def getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+        return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+    socket.getaddrinfo = getaddrinfo_ipv4
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original_getaddrinfo
