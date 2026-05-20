@@ -19,17 +19,7 @@ export function RoadmapMap() {
     module.sections?.flatMap((section) => section.topics) ?? []
   ) ?? [];
 
-  useEffect(() => {
-    setTimeout(() => {
-      if (lastTopicRef.current && containerRef.current) {
-        lastTopicRef.current.scrollIntoView({ 
-          behavior: "smooth", 
-          block: "center",
-          inline: "center"
-        });
-      }
-    }, 100);
-  }, []);
+
 
   return (
     <>

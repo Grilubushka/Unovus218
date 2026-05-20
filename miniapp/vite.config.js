@@ -6,4 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  assetsInclude: ['**/*.ttf', '**/*.otf', '**/*.woff', '**/*.woff2'],
+  optimizeDeps: {
+    exclude: []
+  }
 });
