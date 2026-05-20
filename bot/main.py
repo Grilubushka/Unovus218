@@ -1,5 +1,17 @@
+import threading
+import time
 from html import escape
 
+from bot.application.onboarding_adaptation import (
+    CompletionAdaptation,
+    QuestionAdaptation,
+    apply_option_labels,
+    build_completion_messages,
+    build_question_messages,
+    parse_completion_adaptation,
+    parse_question_adaptation,
+    question_fingerprint,
+)
 from bot.application.profile_flow import (
     TOTAL_STEPS,
     QuizOption,
@@ -12,6 +24,8 @@ from bot.application.profile_flow import (
     get_result,
     get_option,
     go_back,
+    progress_bar,
+    recommended_specialties,
     replace_question_options,
     render_completion,
     render_intro,
@@ -19,6 +33,7 @@ from bot.application.profile_flow import (
     seed_top10_options,
 )
 from bot.infrastructure.config import Settings
+from bot.infrastructure.llm_agent import LlmAgentClient
 from bot.infrastructure.onboarding_db import OnboardingDatabase
 from bot.infrastructure.state_store import JsonStateStore
 from bot.infrastructure.telegram_api import TelegramApi
@@ -30,6 +45,17 @@ BOT_CHAT_ID = "bot_chat_id"
 BOT_MESSAGE_ID = "bot_message_id"
 DB_SESSION_ID = "db_session_id"
 DB_USER_ID = "db_user_id"
+SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+WAIT_BAR_FRAMES = (
+    "▰▱▱▱▱▱",
+    "▰▰▱▱▱▱",
+    "▰▰▰▱▱▱",
+    "▱▰▰▰▱▱",
+    "▱▱▰▰▰▱",
+    "▱▱▱▰▰▰",
+    "▱▱▱▱▰▰",
+    "▱▱▱▱▱▰",
+)
 
 
 def main() -> None:
@@ -152,7 +178,7 @@ def handle_callback(
             payload={"source": "inline_button"},
             session_id=session_id,
         )
-        send_current_question(api, store, database, chat_id, user)
+        send_current_question(api, store, database, settings, chat_id, user)
         return
 
     if data.startswith("routes:"):
@@ -176,7 +202,7 @@ def handle_callback(
         question = current_question_with_database(session, database)
         if not is_current_step(session, question, answer_step) or question.multi_select:
             api.answer_callback(callback_id, "Этот вопрос уже не актуален.")
-            send_current_question(api, store, database, chat_id, user)
+            send_current_question(api, store, database, settings, chat_id, user)
             return
 
         option = get_option(question, option_code)
@@ -209,7 +235,7 @@ def handle_callback(
         question = current_question_with_database(session, database)
         if not is_current_step(session, question, answer_step) or not question.multi_select:
             api.answer_callback(callback_id, "Этот вопрос уже не актуален.")
-            send_current_question(api, store, database, chat_id, user)
+            send_current_question(api, store, database, settings, chat_id, user)
             return
 
         option = get_option(question, option_code)
@@ -226,7 +252,7 @@ def handle_callback(
         session["selected_options"] = selected_codes
         store.save_user(chat_id, user)
         api.answer_callback(callback_id)
-        send_current_question(api, store, database, chat_id, user)
+        send_current_question(api, store, database, settings, chat_id, user)
         return
 
     if data.startswith("quiz:done:"):
@@ -234,7 +260,7 @@ def handle_callback(
         question = current_question_with_database(session, database)
         if requested_step is None or not is_current_step(session, question, requested_step) or not question.multi_select:
             api.answer_callback(callback_id, "Этот вопрос уже не актуален.")
-            send_current_question(api, store, database, chat_id, user)
+            send_current_question(api, store, database, settings, chat_id, user)
             return
 
         selected_codes = list(session.get("selected_options", []))
@@ -268,7 +294,7 @@ def handle_callback(
         if requested_step is not None and is_current_step(session, question, requested_step):
             session["draft_messages"] = []
             store.save_user(chat_id, user)
-            send_current_question(api, store, database, chat_id, user)
+            send_current_question(api, store, database, settings, chat_id, user)
         api.answer_callback(callback_id)
         return
 
@@ -284,7 +310,7 @@ def handle_callback(
         sync_database_session(database, session)
         store.save_user(chat_id, user)
         api.answer_callback(callback_id)
-        send_current_question(api, store, database, chat_id, user)
+        send_current_question(api, store, database, settings, chat_id, user)
         return
 
     api.answer_callback(callback_id)
@@ -313,7 +339,7 @@ def handle_text_answer(
             draft_messages.append(text[:500])
         session["draft_messages"] = draft_messages
         store.save_user(chat_id, user)
-        send_current_question(api, store, database, chat_id, user)
+        send_current_question(api, store, database, settings, chat_id, user)
         return
 
     option = create_manual_option(question, text)
@@ -350,7 +376,7 @@ def finish_or_continue(
     persist_answer(database, session, user_id, current_step, question, option, source)
     if not finished:
         store.save_user(chat_id, user)
-        send_current_question(api, store, database, chat_id, user)
+        send_current_question(api, store, database, settings, chat_id, user)
         return
 
     complete_onboarding(api, store, database, settings, chat_id, user, dict(session.get("profile", {})))
@@ -377,6 +403,20 @@ def complete_onboarding(
     )
     user["profile"] = profile
     user["active_route_id"] = course_id
+    completion_client = create_llm_client(settings)
+    completion_copy = generate_completion_adaptation(
+        settings,
+        profile,
+        client=completion_client,
+        api=api,
+        store=store,
+        chat_id=chat_id,
+        user=user,
+    )
+    if completion_copy is not None:
+        user["completion_copy"] = completion_copy.as_render_dict()
+    else:
+        user.pop("completion_copy", None)
     user.pop("session", None)
     user.pop("roadmap", None)
     store.save_user(chat_id, user)
@@ -385,7 +425,7 @@ def complete_onboarding(
         store,
         chat_id,
         user,
-        render_completion(profile),
+        render_completion(profile, user.get("completion_copy")),
         miniapp_keyboard(settings.miniapp_url),
         parse_mode=HTML,
     )
@@ -395,6 +435,7 @@ def send_current_question(
     api: TelegramApi,
     store: JsonStateStore,
     database: OnboardingDatabase,
+    settings: Settings,
     chat_id: int,
     user: dict,
 ) -> None:
@@ -404,19 +445,37 @@ def send_current_question(
         return
 
     index = int(session.get("step", 0))
+    cache_hit, adaptation = read_cached_question_adaptation(session, question, index)
+    question_client = None
+    if not cache_hit:
+        question_client = create_llm_client(settings)
+        adaptation = get_question_adaptation(
+            settings,
+            session,
+            question,
+            index,
+            client=question_client,
+            api=api,
+            store=store,
+            chat_id=chat_id,
+            user=user,
+        )
+
+    display_question = apply_option_labels(question, adaptation)
     send_or_edit(
         api,
         store,
         chat_id,
         user,
         render_question(
-            question,
+            display_question,
             index,
             list(session.get("selected_options", [])),
             list(session.get("draft_messages", [])),
+            adaptation.as_render_dict() if adaptation is not None else None,
         ),
         question_keyboard(
-            question,
+            display_question,
             index,
             list(session.get("selected_options", [])),
             can_go_back=index > 0,
@@ -442,9 +501,220 @@ def send_miniapp_entry(
         store,
         chat_id,
         user,
-        render_completion(profile),
+        render_completion(profile, user.get("completion_copy")),
         miniapp_keyboard(settings.miniapp_url),
         parse_mode=HTML,
+    )
+
+
+def empty_keyboard() -> dict:
+    return {"inline_keyboard": []}
+
+
+def render_question_thinking(question: QuizQuestion, index: int, frame: int = 0, elapsed_seconds: int = 0) -> str:
+    step = index + 1
+    spinner = SPINNER_FRAMES[frame % len(SPINNER_FRAMES)]
+    wait_bar = WAIT_BAR_FRAMES[frame % len(WAIT_BAR_FRAMES)]
+    return (
+        f"{spinner} <b>Готовлю следующий шаг</b>\n\n"
+        f"<b>{escape(question.title)}</b>\n"
+        "Подбираю формулировки и кнопки под уже собранные ответы. "
+        "Бот не завис: жду ответ LLM-агента.\n\n"
+        f"<code>{wait_bar}</code> · {elapsed_seconds} сек.\n"
+        f"<b>Шаг {step}/{TOTAL_STEPS}</b> · думаю\n"
+        f"<b>Прогресс:</b> {progress_bar(index)}"
+    )
+
+
+def render_completion_thinking(profile: dict[str, str], frame: int = 0, elapsed_seconds: int = 0) -> str:
+    result = get_result(profile)
+    spinner = SPINNER_FRAMES[frame % len(SPINNER_FRAMES)]
+    wait_bar = WAIT_BAR_FRAMES[frame % len(WAIT_BAR_FRAMES)]
+    return (
+        f"{spinner} <b>Собираю итог онбординга</b>\n\n"
+        f"🏁 <b>{escape(str(result['hero']))}</b>\n"
+        "Профиль уже сохранен. Сейчас LLM-агент оформляет финальную карточку, "
+        "поэтому бот не завис и скоро заменит это сообщение на готовый итог.\n\n"
+        f"<code>{wait_bar}</code> · {elapsed_seconds} сек."
+    )
+
+
+def get_question_adaptation(
+    settings: Settings,
+    session: dict,
+    question: QuizQuestion,
+    index: int,
+    *,
+    client: LlmAgentClient | None = None,
+    api: TelegramApi | None = None,
+    store: JsonStateStore | None = None,
+    chat_id: int | None = None,
+    user: dict | None = None,
+) -> QuestionAdaptation | None:
+    cache_hit, cached_adaptation = read_cached_question_adaptation(session, question, index)
+    if cache_hit:
+        return cached_adaptation
+
+    client = client or create_llm_client(settings)
+    if client is None:
+        return None
+
+    cache = session.setdefault("presentation_cache", {})
+    cache_key = str(index)
+    fingerprint = question_fingerprint(question, index, session)
+    try:
+        messages = build_question_messages(question, index, session)
+        if api is not None and chat_id is not None and user is not None:
+            content = call_llm_with_progress(
+                client,
+                messages,
+                api=api,
+                store=store,
+                chat_id=chat_id,
+                user=user,
+                render_progress=lambda frame, elapsed: render_question_thinking(question, index, frame, elapsed),
+                interval_seconds=settings.llm_agent_progress_interval,
+            )
+        else:
+            content = client.chat(messages)
+        adaptation = parse_question_adaptation(content, question)
+    except Exception as error:
+        print(f"LLM question adaptation skipped: {error}")
+        cache[cache_key] = {"fingerprint": fingerprint, "copy": None}
+        return None
+
+    cache[cache_key] = {
+        "fingerprint": fingerprint,
+        "copy": adaptation.as_cache_dict() if adaptation is not None else None,
+    }
+    return adaptation
+
+
+def read_cached_question_adaptation(
+    session: dict,
+    question: QuizQuestion,
+    index: int,
+) -> tuple[bool, QuestionAdaptation | None]:
+    cache = session.setdefault("presentation_cache", {})
+    cache_key = str(index)
+    fingerprint = question_fingerprint(question, index, session)
+    cached = cache.get(cache_key)
+    if not isinstance(cached, dict) or cached.get("fingerprint") != fingerprint:
+        return False, None
+
+    cached_copy = cached.get("copy")
+    adaptation = parse_question_adaptation(cached_copy, question) if isinstance(cached_copy, dict) else None
+    return True, adaptation
+
+
+def call_llm_with_progress(
+    client: LlmAgentClient,
+    messages: list[dict[str, str]],
+    *,
+    api: TelegramApi,
+    store: JsonStateStore | None,
+    chat_id: int,
+    user: dict,
+    render_progress,
+    interval_seconds: float,
+) -> str:
+    result: dict[str, object] = {}
+    done = threading.Event()
+
+    def run_request() -> None:
+        try:
+            result["content"] = client.chat(messages)
+        except Exception as error:
+            result["error"] = error
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=run_request, daemon=True)
+    thread.start()
+
+    frame = 0
+    started_at = time.monotonic()
+    interval = max(interval_seconds, 0.8)
+    while not done.is_set():
+        elapsed_seconds = int(time.monotonic() - started_at)
+        try:
+            send_or_edit(
+                api,
+                store,
+                chat_id,
+                user,
+                render_progress(frame, elapsed_seconds),
+                empty_keyboard(),
+                parse_mode=HTML,
+            )
+        except Exception as error:
+            print(f"LLM progress update skipped: {error}")
+        frame += 1
+        done.wait(interval)
+
+    if "error" in result:
+        error = result["error"]
+        if isinstance(error, BaseException):
+            raise error
+        raise RuntimeError(str(error))
+
+    content = result.get("content")
+    if not isinstance(content, str):
+        raise RuntimeError("LLM agent returned empty content.")
+    return content
+
+
+def generate_completion_adaptation(
+    settings: Settings,
+    profile: dict[str, str],
+    *,
+    client: LlmAgentClient | None = None,
+    api: TelegramApi | None = None,
+    store: JsonStateStore | None = None,
+    chat_id: int | None = None,
+    user: dict | None = None,
+) -> CompletionAdaptation | None:
+    client = client or create_llm_client(settings)
+    if client is None:
+        return None
+
+    try:
+        messages = build_completion_messages(
+            profile,
+            get_result(profile),
+            recommended_specialties(profile) if profile.get("goal_code") == "explore" else [],
+        )
+        if api is not None and chat_id is not None and user is not None:
+            content = call_llm_with_progress(
+                client,
+                messages,
+                api=api,
+                store=store,
+                chat_id=chat_id,
+                user=user,
+                render_progress=lambda frame, elapsed: render_completion_thinking(profile, frame, elapsed),
+                interval_seconds=settings.llm_agent_progress_interval,
+            )
+        else:
+            content = client.chat(messages)
+        return parse_completion_adaptation(content)
+    except Exception as error:
+        print(f"LLM completion adaptation skipped: {error}")
+        return None
+
+
+def create_llm_client(settings: Settings) -> LlmAgentClient | None:
+    token = settings.llm_agent_token.strip()
+    if not settings.llm_onboarding_enabled or not settings.llm_agent_base_url.strip():
+        return None
+    if not token or token == "replace_with_timeweb_agent_token":
+        return None
+    return LlmAgentClient(
+        base_url=settings.llm_agent_base_url,
+        token=token,
+        model=settings.llm_agent_model,
+        timeout=settings.llm_agent_timeout,
+        max_tokens=settings.llm_agent_max_tokens,
     )
 
 
