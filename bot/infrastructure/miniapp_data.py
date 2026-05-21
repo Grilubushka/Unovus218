@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from contextlib import closing
 from datetime import datetime
 import json
 import mimetypes
@@ -18,7 +19,7 @@ class MiniAppDataRepository:
         if telegram_user_id is None:
             return self._empty_roadmap_response("telegram_user_id_required", has_completed_onboarding=False)
 
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             if not self._has_course_schema(db):
                 return self._empty_roadmap_response("course_schema_missing", has_completed_onboarding=False)
 
@@ -75,7 +76,7 @@ class MiniAppDataRepository:
         if telegram_user_id is None:
             return {"ok": False, "error": "telegram_user_id_required"}
 
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             if not self._has_course_schema(db):
                 return {"ok": False, "error": "course_schema_missing"}
 
@@ -111,7 +112,7 @@ class MiniAppDataRepository:
         if telegram_user_id is None:
             return {"ok": False, "error": "telegram_user_id_required"}
 
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             if not self._has_course_schema(db):
                 return {"ok": False, "error": "course_schema_missing"}
 
@@ -127,7 +128,7 @@ class MiniAppDataRepository:
         if telegram_user_id is None:
             raise ValueError("telegramUserId is required")
 
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             if not self._has_certificate_schema(db):
                 return {"ok": False, "error": "certificate_schema_missing"}
 
@@ -206,25 +207,15 @@ class MiniAppDataRepository:
 
     @staticmethod
     def _has_completed_onboarding(db: sqlite3.Connection, telegram_user_id: int) -> bool:
-        if MiniAppDataRepository._has_quiz_schema(db):
-            row = db.execute(
-                """
-                SELECT 1
-                FROM quiz_sessions
-                WHERE telegram_user_id = ?
-                  AND status = 'finished'
-                LIMIT 1
-                """,
-                (telegram_user_id,),
-            ).fetchone()
-            if row is not None:
-                return True
+        if not MiniAppDataRepository._has_quiz_schema(db):
+            return False
 
         row = db.execute(
             """
             SELECT 1
-            FROM course_sessions
+            FROM quiz_sessions
             WHERE telegram_user_id = ?
+              AND status = 'finished'
             LIMIT 1
             """,
             (telegram_user_id,),

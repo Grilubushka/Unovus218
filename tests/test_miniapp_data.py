@@ -47,6 +47,23 @@ class MiniAppDataRepositoryTest(unittest.TestCase):
         self.assertFalse(payload["hasData"])
         self.assertEqual(payload["reason"], "onboarding_required")
 
+    def test_route_without_finished_onboarding_still_requires_onboarding(self) -> None:
+        profile = {"goal": "начал, но не закончил"}
+        self.database.upsert_user({"id": 405, "first_name": "Started"}, 405)
+        session_id = self.database.create_session(405, total_steps=7, profile={})
+        self.database.create_course_session(
+            user_id=405,
+            quiz_session_id=session_id,
+            profile=profile,
+            route=[{"title": "Черновой маршрут"}],
+        )
+
+        payload = self.repository.get_roadmap(405)
+
+        self.assertFalse(payload["hasData"])
+        self.assertFalse(payload["hasCompletedOnboarding"])
+        self.assertEqual(payload["reason"], "onboarding_required")
+
     def test_returns_current_users_completed_route(self) -> None:
         self._create_finished_route(telegram_user_id=505)
 
