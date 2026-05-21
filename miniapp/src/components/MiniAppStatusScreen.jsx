@@ -40,9 +40,7 @@ export function MiniAppStatusScreen({ accessReason, showToast, telegramUserId, t
                 <span>3. Ответь на короткие вопросы</span>
               </div>
               <div className="status-note">
-                {accessReason === "telegram_user_id_required"
-                  ? "Mini App должен быть открыт из Telegram-бота, чтобы мы получили твой ID."
-                  : "После анкеты приложение автоматически покажет персональный маршрут."}
+                {statusNote(accessReason)}
               </div>
             </>
           )}
@@ -53,4 +51,14 @@ export function MiniAppStatusScreen({ accessReason, showToast, telegramUserId, t
       <Toast message={toast} />
     </>
   );
+}
+
+function statusNote(accessReason) {
+  if (accessReason === "telegram_user_id_required") {
+    return "Mini App должен быть открыт из Telegram-бота, чтобы мы получили твой ID.";
+  }
+  if (accessReason === "roadmap_unavailable") {
+    return "Не удалось подтвердить твой маршрут по Telegram ID. Вернись в бот и открой приложение ещё раз.";
+  }
+  return "После анкеты приложение автоматически покажет персональный маршрут.";
 }

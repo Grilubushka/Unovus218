@@ -98,11 +98,11 @@ export function useRoadmapData(activeProfile, telegramUserId) {
           setState({
             roadmap: fallbackRoadmap,
             loading: false,
-            source: "mock",
+            source: "database",
             error: error.message,
-            requiresOnboarding: false,
+            requiresOnboarding: true,
             hasCompletedOnboarding: false,
-            accessReason: "",
+            accessReason: "roadmap_unavailable",
           });
         }
       });
