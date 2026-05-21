@@ -20,6 +20,22 @@ export function useRoadmapData(activeProfile, telegramUserId) {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!telegramUserId) {
+      setState({
+        roadmap: fallbackRoadmap,
+        loading: false,
+        source: "database",
+        error: "",
+        requiresOnboarding: true,
+        hasCompletedOnboarding: false,
+        accessReason: "telegram_user_id_required",
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setState((current) => ({
       ...current,
       roadmap: fallbackRoadmap,
@@ -52,6 +68,19 @@ export function useRoadmapData(activeProfile, telegramUserId) {
           }
 
           throw new Error(payload.reason ? `Roadmap API has no data: ${payload.reason}` : "Roadmap API has no data");
+        }
+
+        if (!belongsToTelegramUser(payload, telegramUserId)) {
+          setState({
+            roadmap: fallbackRoadmap,
+            loading: false,
+            source: "database",
+            error: "",
+            requiresOnboarding: true,
+            hasCompletedOnboarding: false,
+            accessReason: "onboarding_required",
+          });
+          return;
         }
 
         setState({
@@ -136,4 +165,9 @@ export function useRoadmapData(activeProfile, telegramUserId) {
     saveFeedback,
     uploadCertificate,
   };
+}
+
+function belongsToTelegramUser(payload, telegramUserId) {
+  const responseUserId = payload.telegramUserId ?? payload.user?.telegram_user_id;
+  return responseUserId !== undefined && responseUserId !== null && String(responseUserId) === String(telegramUserId);
 }
