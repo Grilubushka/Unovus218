@@ -15,13 +15,28 @@ class MiniAppDataRepository:
         self.database_path = str(Path(database_path).resolve())
 
     def get_roadmap(self, telegram_user_id: int | None = None) -> dict[str, Any]:
+        if telegram_user_id is None:
+            return self._empty_roadmap_response("telegram_user_id_required", has_completed_onboarding=False)
+
         with self._connect() as db:
             if not self._has_course_schema(db):
-                return {"source": "database", "hasData": False, "reason": "course_schema_missing"}
+                return self._empty_roadmap_response("course_schema_missing", has_completed_onboarding=False)
+
+            has_completed_onboarding = self._has_completed_onboarding(db, telegram_user_id)
+            if not has_completed_onboarding:
+                return self._empty_roadmap_response(
+                    "onboarding_required",
+                    has_completed_onboarding=False,
+                    user=self._user(db, telegram_user_id),
+                )
 
             course = self._latest_course(db, telegram_user_id)
             if course is None:
-                return {"source": "database", "hasData": False}
+                return self._empty_roadmap_response(
+                    "route_missing",
+                    has_completed_onboarding=True,
+                    user=self._user(db, telegram_user_id),
+                )
 
             profile = self._loads(course["profile_json"], {})
             route = self._loads(course["route_json"], [])
@@ -38,6 +53,8 @@ class MiniAppDataRepository:
             return {
                 "source": "database",
                 "hasData": True,
+                "hasCompletedOnboarding": True,
+                "telegramUserId": int(course["telegram_user_id"]),
                 "id": f"course-{course['id']}",
                 "title": self._title(profile, route),
                 "domainTitle": profile.get("interest_tone") or "Персональный трек",
@@ -55,15 +72,18 @@ class MiniAppDataRepository:
             }
 
     def mark_module(self, course_id: int, module_index: int, telegram_user_id: int | None = None) -> dict[str, Any]:
+        if telegram_user_id is None:
+            return {"ok": False, "error": "telegram_user_id_required"}
+
         with self._connect() as db:
             if not self._has_course_schema(db):
                 return {"ok": False, "error": "course_schema_missing"}
 
-            course = self._course_by_id(db, course_id)
+            course = self._course_by_id(db, course_id, telegram_user_id)
             if course is None:
                 return {"ok": False, "error": "course_not_found"}
 
-            user_id = int(telegram_user_id or course["telegram_user_id"])
+            user_id = int(telegram_user_id)
             next_module = max(int(course["current_module"] or 0), module_index + 1)
             status = "completed" if next_module >= int(course["total_modules"] or 0) else course["status"]
             db.execute(
@@ -88,24 +108,30 @@ class MiniAppDataRepository:
         feedback: str,
         telegram_user_id: int | None = None,
     ) -> dict[str, Any]:
+        if telegram_user_id is None:
+            return {"ok": False, "error": "telegram_user_id_required"}
+
         with self._connect() as db:
             if not self._has_course_schema(db):
                 return {"ok": False, "error": "course_schema_missing"}
 
-            course = self._course_by_id(db, course_id)
+            course = self._course_by_id(db, course_id, telegram_user_id)
             if course is None:
                 return {"ok": False, "error": "course_not_found"}
-            user_id = int(telegram_user_id or course["telegram_user_id"])
+            user_id = int(telegram_user_id)
             self._save_module_event(db, course_id, user_id, module_index, "module_feedback", {"feedback": feedback})
             db.commit()
         return {"ok": True}
 
     def upload_certificate(self, payload: dict[str, Any], telegram_user_id: int | None = None) -> dict[str, Any]:
+        if telegram_user_id is None:
+            raise ValueError("telegramUserId is required")
+
         with self._connect() as db:
             if not self._has_certificate_schema(db):
                 return {"ok": False, "error": "certificate_schema_missing"}
 
-            user_id = self._resolve_certificate_user_id(db, telegram_user_id)
+            user_id = int(telegram_user_id)
             title = str(payload.get("title") or payload.get("fileName") or "Сертификат").strip()[:160]
             file_type = str(payload.get("fileType") or "application/octet-stream").strip()[:120]
             file_name = self._safe_file_name(str(payload.get("fileName") or title), file_type)
@@ -168,30 +194,85 @@ class MiniAppDataRepository:
         return row is not None
 
     @staticmethod
-    def _latest_course(db: sqlite3.Connection, telegram_user_id: int | None) -> sqlite3.Row | None:
-        if telegram_user_id is not None:
+    def _has_quiz_schema(db: sqlite3.Connection) -> bool:
+        row = db.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'quiz_sessions'
+            """
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def _has_completed_onboarding(db: sqlite3.Connection, telegram_user_id: int) -> bool:
+        if MiniAppDataRepository._has_quiz_schema(db):
             row = db.execute(
                 """
-                SELECT * FROM course_sessions
+                SELECT 1
+                FROM quiz_sessions
                 WHERE telegram_user_id = ?
-                ORDER BY updated_at DESC, id DESC
+                  AND status = 'finished'
                 LIMIT 1
                 """,
                 (telegram_user_id,),
             ).fetchone()
             if row is not None:
-                return row
+                return True
 
-        return db.execute("SELECT * FROM course_sessions ORDER BY updated_at DESC, id DESC LIMIT 1").fetchone()
+        row = db.execute(
+            """
+            SELECT 1
+            FROM course_sessions
+            WHERE telegram_user_id = ?
+            LIMIT 1
+            """,
+            (telegram_user_id,),
+        ).fetchone()
+        return row is not None
 
     @staticmethod
-    def _course_by_id(db: sqlite3.Connection, course_id: int) -> sqlite3.Row | None:
-        return db.execute("SELECT * FROM course_sessions WHERE id = ?", (course_id,)).fetchone()
+    def _latest_course(db: sqlite3.Connection, telegram_user_id: int) -> sqlite3.Row | None:
+        return db.execute(
+            """
+            SELECT * FROM course_sessions
+            WHERE telegram_user_id = ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+            """,
+            (telegram_user_id,),
+        ).fetchone()
+
+    @staticmethod
+    def _course_by_id(db: sqlite3.Connection, course_id: int, telegram_user_id: int | None = None) -> sqlite3.Row | None:
+        if telegram_user_id is None:
+            return db.execute("SELECT * FROM course_sessions WHERE id = ?", (course_id,)).fetchone()
+        return db.execute(
+            "SELECT * FROM course_sessions WHERE id = ? AND telegram_user_id = ?",
+            (course_id, telegram_user_id),
+        ).fetchone()
 
     @staticmethod
     def _user(db: sqlite3.Connection, telegram_user_id: int) -> dict[str, Any]:
         row = db.execute("SELECT * FROM users WHERE telegram_user_id = ?", (telegram_user_id,)).fetchone()
         return dict(row) if row is not None else {"telegram_user_id": telegram_user_id}
+
+    @staticmethod
+    def _empty_roadmap_response(
+        reason: str,
+        *,
+        has_completed_onboarding: bool,
+        user: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "source": "database",
+            "hasData": False,
+            "hasCompletedOnboarding": has_completed_onboarding,
+            "reason": reason,
+        }
+        if user is not None:
+            payload["user"] = user
+        return payload
 
     @staticmethod
     def _certificates(db: sqlite3.Connection, telegram_user_id: int) -> list[dict[str, Any]]:
@@ -409,32 +490,6 @@ class MiniAppDataRepository:
             """,
             (course_id, user_id, module_index, event_name, json.dumps(payload, ensure_ascii=False)),
         )
-
-    @staticmethod
-    def _resolve_certificate_user_id(db: sqlite3.Connection, telegram_user_id: int | None) -> int:
-        if telegram_user_id is not None:
-            return telegram_user_id
-
-        row = db.execute(
-            """
-            SELECT telegram_user_id
-            FROM course_sessions
-            ORDER BY updated_at DESC, id DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        if row is not None:
-            return int(row["telegram_user_id"])
-
-        row = db.execute(
-            """
-            SELECT telegram_user_id
-            FROM users
-            ORDER BY updated_at DESC, created_at DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        return int(row["telegram_user_id"]) if row is not None else 0
 
     @staticmethod
     def _decode_data_url(data_url: str) -> bytes:

@@ -28,9 +28,6 @@ export class ApiRoadmapRepository {
       throw new Error(`Roadmap API failed: ${response.status}`);
     }
     const payload = await response.json();
-    if (!payload.hasData) {
-      throw new Error("Roadmap API has no data");
-    }
     return payload;
   }
 

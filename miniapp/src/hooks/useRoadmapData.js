@@ -4,6 +4,7 @@ import { ApiRoadmapRepository, RoadmapRepository } from "../infrastructure/roadm
 
 const fallbackRepository = new RoadmapRepository();
 const apiRepository = new ApiRoadmapRepository();
+const onboardingGateReasons = new Set(["onboarding_required", "telegram_user_id_required"]);
 
 export function useRoadmapData(activeProfile, telegramUserId) {
   const fallbackRoadmap = useMemo(() => fallbackRepository.getRoadmap(activeProfile), [activeProfile]);
@@ -12,22 +13,68 @@ export function useRoadmapData(activeProfile, telegramUserId) {
     loading: true,
     source: "mock",
     error: "",
+    requiresOnboarding: false,
+    hasCompletedOnboarding: false,
+    accessReason: "",
   });
 
   useEffect(() => {
     let cancelled = false;
-    setState((current) => ({ ...current, roadmap: fallbackRoadmap, loading: true, source: "mock", error: "" }));
+    setState((current) => ({
+      ...current,
+      roadmap: fallbackRoadmap,
+      loading: true,
+      source: "mock",
+      error: "",
+      requiresOnboarding: false,
+      accessReason: "",
+    }));
 
     apiRepository
       .getRoadmap(telegramUserId)
-      .then((roadmap) => {
-        if (!cancelled) {
-          setState({ roadmap, loading: false, source: "database", error: "" });
+      .then((payload) => {
+        if (cancelled) {
+          return;
         }
+
+        if (!payload.hasData) {
+          if (onboardingGateReasons.has(payload.reason) || payload.hasCompletedOnboarding === false) {
+            setState({
+              roadmap: fallbackRoadmap,
+              loading: false,
+              source: "database",
+              error: "",
+              requiresOnboarding: true,
+              hasCompletedOnboarding: false,
+              accessReason: payload.reason || "onboarding_required",
+            });
+            return;
+          }
+
+          throw new Error(payload.reason ? `Roadmap API has no data: ${payload.reason}` : "Roadmap API has no data");
+        }
+
+        setState({
+          roadmap: payload,
+          loading: false,
+          source: "database",
+          error: "",
+          requiresOnboarding: false,
+          hasCompletedOnboarding: payload.hasCompletedOnboarding ?? true,
+          accessReason: "",
+        });
       })
       .catch((error) => {
         if (!cancelled) {
-          setState({ roadmap: fallbackRoadmap, loading: false, source: "mock", error: error.message });
+          setState({
+            roadmap: fallbackRoadmap,
+            loading: false,
+            source: "mock",
+            error: error.message,
+            requiresOnboarding: false,
+            hasCompletedOnboarding: false,
+            accessReason: "",
+          });
         }
       });
 
@@ -43,7 +90,18 @@ export function useRoadmapData(activeProfile, telegramUserId) {
       telegramUserId,
     });
     const roadmap = await apiRepository.getRoadmap(telegramUserId);
-    setState({ roadmap, loading: false, source: "database", error: "" });
+    if (!roadmap.hasData) {
+      throw new Error(roadmap.reason || "Roadmap API has no data");
+    }
+    setState({
+      roadmap,
+      loading: false,
+      source: "database",
+      error: "",
+      requiresOnboarding: false,
+      hasCompletedOnboarding: roadmap.hasCompletedOnboarding ?? true,
+      accessReason: "",
+    });
   }
 
   async function saveFeedback(topic, feedback) {
@@ -58,7 +116,17 @@ export function useRoadmapData(activeProfile, telegramUserId) {
   async function uploadCertificate(file) {
     const certificate = await apiRepository.uploadCertificate({ file, telegramUserId });
     const roadmap = await apiRepository.getRoadmap(telegramUserId);
-    setState({ roadmap, loading: false, source: "database", error: "" });
+    if (roadmap.hasData) {
+      setState({
+        roadmap,
+        loading: false,
+        source: "database",
+        error: "",
+        requiresOnboarding: false,
+        hasCompletedOnboarding: roadmap.hasCompletedOnboarding ?? true,
+        accessReason: "",
+      });
+    }
     return certificate;
   }
 

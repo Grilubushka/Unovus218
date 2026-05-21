@@ -1,3 +1,5 @@
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from bot.application.profile_flow import QuizQuestion
 
 MAX_SINGLE_COLUMN_BUTTONS = 5
@@ -66,10 +68,31 @@ def question_keyboard(
     return inline_keyboard(rows)
 
 
-def miniapp_keyboard(miniapp_url: str) -> dict:
+def miniapp_url_for_user(miniapp_url: str, telegram_user_id: int | None = None) -> str:
+    if not miniapp_url or telegram_user_id is None:
+        return miniapp_url
+
+    parsed = urlsplit(miniapp_url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in {"telegram_user_id", "user_id"}
+    ]
+    query.append(("telegram_user_id", str(telegram_user_id)))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+def miniapp_keyboard(miniapp_url: str, telegram_user_id: int | None = None) -> dict:
     buttons: list[dict] = []
     if miniapp_url:
-        buttons.append(web_app_button("Открыть Mini App", miniapp_url, style="success", emoji="🚀"))
+        buttons.append(
+            web_app_button(
+                "Открыть Mini App",
+                miniapp_url_for_user(miniapp_url, telegram_user_id),
+                style="success",
+                emoji="🚀",
+            )
+        )
     buttons.append(callback_button("Мои маршруты", "routes:list:0", style="primary", emoji="🧭"))
     buttons.append(callback_button("Собрать заново", "quiz:start", style="primary", emoji="🔄"))
     return inline_keyboard(button_rows(buttons))
@@ -81,10 +104,18 @@ def routes_keyboard(
     total: int,
     miniapp_url: str,
     route_id: int | None = None,
+    telegram_user_id: int | None = None,
 ) -> dict:
     buttons: list[dict] = []
     if miniapp_url:
-        buttons.append(web_app_button("Открыть в Mini App", miniapp_url, style="success", emoji="🚀"))
+        buttons.append(
+            web_app_button(
+                "Открыть в Mini App",
+                miniapp_url_for_user(miniapp_url, telegram_user_id),
+                style="success",
+                emoji="🚀",
+            )
+        )
 
     if total > 1:
         buttons.append(callback_button("Назад", f"routes:page:{max(page - 1, 0)}", style="danger", emoji="⬅️"))

@@ -84,13 +84,12 @@ LLM_AGENT_PROGRESS_INTERVAL=2
 
 Mini App реализован на React + Vite. В Docker он собирается в `dist` на Node stage, после чего контейнер отдаёт готовую статику на порту `8080`. Этот же порт отдаёт JSON API для Mini App:
 
-- `GET /api/roadmap` — читает последнюю сессию курса из SQLite;
-- `GET /api/roadmap?telegram_user_id=...` — читает маршрут конкретного Telegram-пользователя;
+- `GET /api/roadmap?telegram_user_id=...` — читает маршрут конкретного Telegram-пользователя и возвращает статус завершённого онбординга;
 - `POST /api/progress/mark` — записывает завершение модуля в `course_sessions` и `course_module_events`;
 - `POST /api/feedback` — записывает обратную связь в `course_module_events`.
 - `POST /api/certificates/upload` — сохраняет PDF или изображение сертификата из Mini App в `data/certificates` и `user_certificates`.
 
-Если в базе нет маршрутов, Mini App покажет демо-данные, чтобы интерфейс не ломался.
+Mini App получает Telegram ID из `window.Telegram.WebApp.initDataUnsafe.user.id` или из параметра `telegram_user_id`, который бот добавляет в `web_app`-кнопку. API больше не отдаёт последний маршрут без пользователя: если ID не передан или у пользователя нет завершённого онбординга, Mini App показывает стартовый экран с просьбой пройти анкету в боте.
 
 Локальная разработка Mini App:
 
@@ -110,7 +109,7 @@ npm run build
 Проверка API на сервере:
 
 ```bash
-curl http://localhost:8080/api/roadmap
+curl 'http://localhost:8080/api/roadmap?telegram_user_id=123'
 ```
 
 ### Docker

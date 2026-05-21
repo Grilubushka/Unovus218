@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo, useState } from "react";
 import { buildAchievements } from "../domain/achievements.js";
 import { useRoadmapData } from "../hooks/useRoadmapData.js";
 import { useTelegramWebApp } from "../hooks/useTelegramWebApp.js";
+import { MiniAppStatusScreen } from "./MiniAppStatusScreen.jsx";
 
 const AppContext = createContext(null);
 const BASE_COINS = 128;
@@ -10,7 +11,7 @@ const LOCAL_CERTIFICATES_KEY = "progressors.localCertificates";
 const CLAIMED_ACHIEVEMENTS_KEY = "progressors.claimedAchievements";
 
 export function AppProvider({ children }) {
-  const { user: telegramUser } = useTelegramWebApp();
+  const { user: telegramUser, userId: telegramUserId } = useTelegramWebApp();
   const [activeProfile, setActiveProfile] = useState("python");
   const [selectedTopicId, setSelectedTopicId] = useState(null);
   const [toast, setToast] = useState("");
@@ -23,10 +24,13 @@ export function AppProvider({ children }) {
     loading,
     source,
     error,
+    requiresOnboarding,
+    hasCompletedOnboarding,
+    accessReason,
     markModule,
     saveFeedback,
     uploadCertificate: uploadCertificateToApi,
-  } = useRoadmapData(activeProfile, telegramUser?.id);
+  } = useRoadmapData(activeProfile, telegramUserId);
   const topics = useMemo(() => roadmap?.modules?.flatMap((m) => m.sections).flatMap((s) => s.topics) ?? [], [roadmap]);
   const currentTopic = topics.find((t) => t.progress > 0 && t.progress < 100) ?? topics[0];
   const selectedTopic = topics.find((t) => t.id === selectedTopicId);
@@ -120,31 +124,55 @@ export function AppProvider({ children }) {
     showToast(`Начислено ${achievement.reward} прокоинов.`);
   }
 
+  const contextValue = {
+    accessReason,
+    achievements,
+    activeProfile,
+    certificates,
+    claimedAchievements,
+    coinBalance,
+    currentTopic,
+    error,
+    hasCompletedOnboarding,
+    loading,
+    roadmap,
+    requiresOnboarding,
+    selectedTopic,
+    source,
+    telegramUser,
+    telegramUserId,
+    toast,
+    changeProfile,
+    claimAchievement,
+    markTopic,
+    openCurrentTopic,
+    saveTopicFeedback,
+    setSelectedTopicId,
+    showToast,
+    uploadCertificate,
+  };
+
   return (
-    <AppContext.Provider value={{
-      achievements,
-      activeProfile,
-      certificates,
-      claimedAchievements,
-      coinBalance,
-      currentTopic,
-      error,
-      loading,
-      roadmap,
-      selectedTopic,
-      source,
-      telegramUser,
-      toast,
-      changeProfile,
-      claimAchievement,
-      markTopic,
-      openCurrentTopic,
-      saveTopicFeedback,
-      setSelectedTopicId,
-      showToast,
-      uploadCertificate,
-    }}>
-      {children}
+    <AppContext.Provider value={contextValue}>
+      {loading ? (
+        <MiniAppStatusScreen
+          accessReason={accessReason}
+          showToast={showToast}
+          telegramUserId={telegramUserId}
+          toast={toast}
+          variant="loading"
+        />
+      ) : requiresOnboarding ? (
+        <MiniAppStatusScreen
+          accessReason={accessReason}
+          showToast={showToast}
+          telegramUserId={telegramUserId}
+          toast={toast}
+          variant="onboarding"
+        />
+      ) : (
+        children
+      )}
     </AppContext.Provider>
   );
 }

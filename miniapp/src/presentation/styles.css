@@ -1053,6 +1053,86 @@ meter {
   line-height: 1.45;
 }
 
+.status-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.miniapp-status {
+  min-height: calc(100vh - 186px - var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+  padding: 24px 20px;
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(255, 3, 156, 0.18), transparent 46%),
+    linear-gradient(225deg, rgba(51, 232, 255, 0.16), transparent 50%),
+    rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow);
+}
+
+.miniapp-status h1,
+.miniapp-status p {
+  margin: 0;
+}
+
+.miniapp-status h1 {
+  max-width: 390px;
+  font-size: 40px;
+  line-height: 0.96;
+  letter-spacing: 0;
+}
+
+.miniapp-status p {
+  max-width: 390px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.status-steps {
+  display: grid;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+.status-steps span,
+.status-note,
+.status-user-id {
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.status-steps span {
+  display: block;
+  padding: 13px 14px;
+  border-radius: 18px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.status-note {
+  padding: 13px 14px;
+  border-left: 4px solid var(--green);
+  border-radius: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.status-user-id {
+  align-self: flex-start;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--muted-soft);
+  font-size: 11px;
+}
+
 .upload-panel {
   display: grid;
   gap: 15px;
@@ -1690,7 +1770,8 @@ meter {
 
 @media (max-width: 380px) {
   .hero h1,
-  .page-hero h1 {
+  .page-hero h1,
+  .miniapp-status h1 {
     font-size: 34px;
   }
 

@@ -18,7 +18,7 @@ class MiniAppRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/roadmap":
             try:
                 params = parse_qs(parsed.query)
-                user_id = as_int(first(params.get("telegram_user_id")))
+                user_id = as_int(first(params.get("telegram_user_id")) or first(params.get("user_id")))
                 self.send_json(self.repository.get_roadmap(user_id))
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)}, status=500)
@@ -47,8 +47,8 @@ class MiniAppRequestHandler(SimpleHTTPRequestHandler):
         course_id = as_int(payload.get("courseId"))
         module_index = as_int(payload.get("moduleIndex"))
         user_id = as_int(payload.get("telegramUserId"))
-        if course_id is None or module_index is None:
-            self.send_json({"ok": False, "error": "courseId and moduleIndex are required"}, status=400)
+        if course_id is None or module_index is None or user_id is None:
+            self.send_json({"ok": False, "error": "courseId, moduleIndex and telegramUserId are required"}, status=400)
             return
 
         try:

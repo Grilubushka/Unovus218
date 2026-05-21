@@ -105,11 +105,27 @@ def handle_message(
         return
 
     if text in {"/app", "/roadmap"}:
-        send_miniapp_entry(api, store, settings, chat_id, user)
+        send_miniapp_entry(
+            api,
+            store,
+            settings,
+            chat_id,
+            user,
+            user_id=telegram_user_id(message.get("from") or {}, chat_id),
+        )
         return
 
     if text == "/routes":
-        send_routes_page(api, store, database, settings, chat_id, user, 0)
+        send_routes_page(
+            api,
+            store,
+            database,
+            settings,
+            chat_id,
+            user,
+            0,
+            user_id=telegram_user_id(message.get("from") or {}, chat_id),
+        )
         return
 
     if text == "/debug":
@@ -129,7 +145,14 @@ def handle_message(
     session = user.get("session")
     if not session:
         if user.get("profile"):
-            send_miniapp_entry(api, store, settings, chat_id, user)
+            send_miniapp_entry(
+                api,
+                store,
+                settings,
+                chat_id,
+                user,
+                user_id=telegram_user_id(message.get("from") or {}, chat_id),
+            )
             return
         send_or_edit(api, store, chat_id, user, "Нажми /start, и я соберу профиль для Mini App.", start_keyboard())
         return
@@ -191,7 +214,14 @@ def handle_callback(
     session = user.get("session")
     if not session:
         api.answer_callback(callback_id)
-        send_miniapp_entry(api, store, settings, chat_id, user)
+        send_miniapp_entry(
+            api,
+            store,
+            settings,
+            chat_id,
+            user,
+            user_id=telegram_user_id(callback.get("from") or {}, chat_id),
+        )
         return
 
     if data.startswith("quiz:answer:"):
@@ -425,6 +455,7 @@ def complete_onboarding(
     )
     user["profile"] = profile
     user["active_route_id"] = course_id
+    user["active_route_user_id"] = user_id
     user["admin_onboarding_payload"] = admin_payload
     completion_client = create_llm_client(settings)
     completion_copy = generate_completion_adaptation(
@@ -449,7 +480,7 @@ def complete_onboarding(
         chat_id,
         user,
         render_completion(profile, user.get("completion_copy")),
-        miniapp_keyboard(settings.miniapp_url),
+        miniapp_keyboard(settings.miniapp_url, user_id),
         parse_mode=HTML,
     )
 
@@ -514,18 +545,21 @@ def send_miniapp_entry(
     settings: Settings,
     chat_id: int,
     user: dict,
+    *,
+    user_id: int | None = None,
 ) -> None:
     profile = user.get("profile")
     if not profile:
         send_or_edit(api, store, chat_id, user, "Сначала пройдем короткий онбординг.", start_keyboard())
         return
+    owner_id = user_id or as_int(user.get("active_route_user_id")) or chat_id
     send_or_edit(
         api,
         store,
         chat_id,
         user,
         render_completion(profile, user.get("completion_copy")),
-        miniapp_keyboard(settings.miniapp_url),
+        miniapp_keyboard(settings.miniapp_url, owner_id),
         parse_mode=HTML,
     )
 
@@ -755,7 +789,7 @@ def handle_routes_callback(
     user_id = telegram_user_id(telegram_user, chat_id)
     parts = data.split(":")
     if len(parts) >= 2 and parts[1] == "menu":
-        send_miniapp_entry(api, store, settings, chat_id, user)
+        send_miniapp_entry(api, store, settings, chat_id, user, user_id=user_id)
         return
 
     if len(parts) >= 3 and parts[1] == "page":
@@ -800,6 +834,7 @@ def send_routes_page(
     page = min(max(page, 0), len(routes) - 1)
     route = routes[page]
     user["active_route_id"] = route["id"]
+    user["active_route_user_id"] = owner_id
     if route.get("profile"):
         user["profile"] = route["profile"]
     store.save_user(chat_id, user)
@@ -809,7 +844,13 @@ def send_routes_page(
         chat_id,
         user,
         render_route_page(route, page, len(routes)),
-        routes_keyboard(page=page, total=len(routes), miniapp_url=settings.miniapp_url, route_id=route["id"]),
+        routes_keyboard(
+            page=page,
+            total=len(routes),
+            miniapp_url=settings.miniapp_url,
+            route_id=route["id"],
+            telegram_user_id=owner_id,
+        ),
         parse_mode=HTML,
     )
 
@@ -832,6 +873,7 @@ def send_route_detail(
         return
 
     user["active_route_id"] = route["id"]
+    user["active_route_user_id"] = user_id
     if route.get("profile"):
         user["profile"] = route["profile"]
     store.save_user(chat_id, user)
@@ -841,7 +883,13 @@ def send_route_detail(
         chat_id,
         user,
         render_route_detail(route),
-        routes_keyboard(page=page, total=max(len(database.list_active_routes(user_id)), 1), miniapp_url=settings.miniapp_url, route_id=route_id),
+        routes_keyboard(
+            page=page,
+            total=max(len(database.list_active_routes(user_id)), 1),
+            miniapp_url=settings.miniapp_url,
+            route_id=route_id,
+            telegram_user_id=user_id,
+        ),
         parse_mode=HTML,
     )
 
