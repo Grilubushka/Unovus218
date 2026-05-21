@@ -103,6 +103,8 @@ class LLMSettings(TimeStampedModel):
 
     def resolve_model_uri(self, model_name, provider=None):
         provider = provider or self.provider
+        if provider == self.Provider.YANDEX:
+            model_name = os.getenv("YANDEX_CLOUD_MODEL", "") or model_name
         if provider != self.Provider.YANDEX or model_name.startswith("gpt://"):
             return model_name
         folder_id = os.getenv(self.folder_id_env, "")
@@ -117,11 +119,13 @@ class LLMSettings(TimeStampedModel):
     def api_base_url_for(self, purpose="default"):
         if purpose == "chat":
             return self.chat_api_base_url or os.getenv(self.chat_api_base_url_env, "")
-        return self.api_base_url
+        return self.api_base_url or os.getenv("WEB_SEARCH_BASE_URL", "")
 
     def api_key_env_for(self, purpose="default"):
         if purpose == "chat":
             return self.chat_api_key_env
+        if not os.getenv(self.api_key_env, "") and os.getenv("WEB_SEARCH_API_KEY", ""):
+            return "WEB_SEARCH_API_KEY"
         return self.api_key_env
 
     def provider_for(self, purpose="default"):

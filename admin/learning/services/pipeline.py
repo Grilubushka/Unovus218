@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+import json
 from urllib.parse import urlparse
 
 from django.db import transaction
@@ -17,7 +18,14 @@ from learning.models import (
     WebSearchProfile,
 )
 from learning.prompts import PROFILE_QUESTIONS_PROMPT
-from learning.services.llm import ResponsesLLMClient
+from learning.services.llm import LLMResponseError, ResponsesLLMClient
+
+
+MAX_GOAL_CHARS = 1200
+MAX_PROFILE_SNAPSHOT_CHARS = 2000
+MAX_MODULE_FIELD_CHARS = 700
+MAX_REJECTED_URLS = 20
+MAX_CANDIDATES_FOR_STRUCTURING = 6
 
 
 @dataclass(frozen=True)
@@ -45,7 +53,7 @@ class CoursePipeline:
         )
         payload["max_output_tokens"] = min(self.llm_settings.max_output_tokens, 700)
         data = self.llm_client.create_json(payload, purpose="chat")
-        questions = data.get("questions") or []
+        questions = self._extract_list_response(data, "questions")
         return [question for question in questions if question.get("text")][:3]
 
     @transaction.atomic
@@ -81,10 +89,10 @@ class CoursePipeline:
         prompt = "\n\n".join(
             [
                 self.llm_settings.course_builder_prompt,
-                f"Цель пользователя: {course.goal}",
-                f"Исходный уровень: {course.initial_level or 'не указан'}",
-                f"Целевой уровень: {course.target_level or 'не указан'}",
-                f"Снимок профиля: {course.profile_snapshot}",
+                f"Цель пользователя: {self._truncate(course.goal, MAX_GOAL_CHARS)}",
+                f"Исходный уровень: {self._truncate(course.initial_level or 'не указан', 300)}",
+                f"Целевой уровень: {self._truncate(course.target_level or 'не указан', 300)}",
+                f"Снимок профиля: {self._compact_json(course.profile_snapshot, MAX_PROFILE_SNAPSHOT_CHARS)}",
             ]
         )
         return self._base_llm_payload(prompt, model=self.llm_settings.resolve_chat_model_uri())
@@ -96,6 +104,9 @@ class CoursePipeline:
             course.save(update_fields=["status", "updated_at"])
             course_data = self.generate_course_outline(course)
             self.apply_course_outline(course, course_data)
+            if not course.modules.exists():
+                raise LLMResponseError("LLM не вернула модули курса в ожидаемой схеме.")
+            self.activate_first_module(course)
             for module in course.modules.order_by("order"):
                 self.search_module_materials(module, WebSearchProfile.MaterialKind.VIDEO)
                 self.search_module_materials(module, WebSearchProfile.MaterialKind.TEXT)
@@ -120,6 +131,7 @@ class CoursePipeline:
         try:
             payload = self.build_course_request(course)
             data = self.llm_client.create_json(payload, purpose="chat")
+            data = self._normalize_object_response(data, "course")
             run.mark_finished(PipelineRun.Status.SUCCESS, data)
             return data
         except Exception as exc:
@@ -158,6 +170,14 @@ class CoursePipeline:
                 content_balance=str(module_data.get("content_balance") or "Видео + текст + практика")[:120],
             )
 
+    def activate_first_module(self, course: Course) -> None:
+        if course.modules.exclude(status=CourseModule.Status.PLANNED).exists():
+            return
+        first_module = course.modules.order_by("order").first()
+        if first_module:
+            first_module.status = CourseModule.Status.ACTIVE
+            first_module.save(update_fields=["status", "updated_at"])
+
     def build_material_search_request(
         self,
         module: CourseModule,
@@ -172,18 +192,35 @@ class CoursePipeline:
         if profile is None:
             raise WebSearchProfile.DoesNotExist(f"No active Web Search profile for {material_kind}")
 
-        rejected_urls = rejected_urls or []
+        rejected_urls = (rejected_urls or [])[:MAX_REJECTED_URLS]
         variables = {
-            "course_goal": module.course.goal,
-            "module": self._module_context(module),
+            "course_goal": self._truncate(module.course.goal, MAX_GOAL_CHARS),
+            "module": self._module_context(module, compact=True),
             "rejected_urls": "\n".join(rejected_urls) or "[]",
         }
         payload = profile.build_responses_payload(self.llm_settings, variables=variables)
+        payload["max_output_tokens"] = min(payload.get("max_output_tokens") or 1000, 800)
         if not profile.agent_prompt_id:
             payload["input"] = (
                 profile.prompt.replace("{{course_goal}}", variables["course_goal"])
                 .replace("{{module}}", variables["module"])
                 .replace("{{rejected_urls}}", variables["rejected_urls"])
+            )
+            payload["input"] = "\n\n".join(
+                [
+                    payload["input"],
+                    "Ограничение объёма: верни максимум 5 лучших кандидатов. "
+                    "Для каждого кандидата нужны только title и url.",
+                ]
+            )
+            if payload.get("tools"):
+                for tool in payload["tools"]:
+                    if tool.get("type") == "web_search":
+                        tool["search_context_size"] = "low"
+        else:
+            payload["input"] = (
+                "Найди до 5 лучших бесплатных русскоязычных материалов для модуля. "
+                "Верни только JSON с candidates; у каждого кандидата только title и url."
             )
         return payload
 
@@ -216,7 +253,7 @@ class CoursePipeline:
         try:
             payload = self.build_material_search_request(module, material_kind, rejected_urls)
             data = self.llm_client.create_json(payload)
-            candidates = self._valid_candidates(data.get("candidates") or [])
+            candidates = self._valid_candidates(self._extract_list_response(data, "candidates"))
             self.save_search_candidates(module, profile, candidates, raw_payload=data)
             run.mark_finished(PipelineRun.Status.SUCCESS, {"created_candidates": len(candidates), "raw": data})
             return candidates
@@ -248,24 +285,27 @@ class CoursePipeline:
         return created
 
     def build_structuring_request(self, module: CourseModule) -> dict:
-        candidates = list(
-            module.material_candidates.exclude(status=MaterialCandidate.Status.REJECTED).values(
+        candidates = [
+            {
+                "title": self._truncate(candidate["title"], 180),
+                "url": self._truncate(candidate["url"], 500),
+                "material_kind": candidate["material_kind"],
+            }
+            for candidate in module.material_candidates.exclude(status=MaterialCandidate.Status.REJECTED).values(
                 "title",
                 "url",
                 "material_kind",
-                "status",
             )
-        )
+        ]
 
-        # Ограничиваем число кандидатов, чтобы ответ не раздувался
-        candidates = candidates[:5]
+        candidates = self._prioritize_candidates(candidates)[:MAX_CANDIDATES_FOR_STRUCTURING]
 
         prompt = "\n\n".join(
             [
                 self.llm_settings.material_structuring_prompt,
-                f"Цель курса: {module.course.goal}",
-                f"Модуль: {self._module_context(module)}",
-                f"Кандидаты: {candidates}",
+                f"Цель курса: {self._truncate(module.course.goal, MAX_GOAL_CHARS)}",
+                f"Модуль: {self._module_context(module, compact=True)}",
+                f"Кандидаты: {self._compact_json(candidates, 5000)}",
             ]
         )
 
@@ -289,6 +329,7 @@ class CoursePipeline:
         try:
             payload = self.build_structuring_request(module)
             data = self.llm_client.create_json(payload, purpose="chat")
+            data = self._normalize_list_container(data, "elements")
             elements = self.apply_structured_elements(module, data)
             run.mark_finished(PipelineRun.Status.SUCCESS, {"created_elements": len(elements), "raw": data})
             return elements
@@ -370,6 +411,7 @@ class CoursePipeline:
         )
         try:
             data = self.llm_client.create_json(payload, purpose="chat")
+            data = self._normalize_list_container(data, "elements")
             replacement = self._replace_single_element(feedback.element, data)
             run.mark_finished(
                 PipelineRun.Status.SUCCESS,
@@ -390,15 +432,18 @@ class CoursePipeline:
             **(self.llm_settings.extra_options or {}),
         }
 
-    def _module_context(self, module: CourseModule) -> str:
+    def _module_context(self, module: CourseModule, compact: bool = False) -> str:
+        def field(value, limit=MAX_MODULE_FIELD_CHARS):
+            return self._truncate(value, limit) if compact else value
+
         return "\n".join(
             [
-                f"Название: {module.title}",
-                f"Описание: {module.description}",
-                f"Результаты обучения: {module.learning_outcomes}",
-                f"Компетенции: {module.competencies}",
-                f"Где применяются навыки: {module.use_cases}",
-                f"Актуальность: {module.market_relevance}",
+                f"Название: {field(module.title, 240)}",
+                f"Описание: {field(module.description)}",
+                f"Результаты обучения: {self._compact_json(module.learning_outcomes, 900) if compact else module.learning_outcomes}",
+                f"Компетенции: {self._compact_json(module.competencies, 900) if compact else module.competencies}",
+                f"Где применяются навыки: {field(module.use_cases)}",
+                f"Актуальность: {field(module.market_relevance)}",
                 f"Трудоёмкость: {module.total_effort_hours} ч",
             ]
         )
@@ -453,6 +498,8 @@ class CoursePipeline:
         valid = []
         seen = set()
         for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
             title = str(candidate.get("title") or "").strip()
             url = str(candidate.get("url") or "").strip()
             if not title or not url or url in seen:
@@ -471,6 +518,33 @@ class CoursePipeline:
         if isinstance(value, str) and value.strip():
             return [value.strip()]
         return []
+
+    @classmethod
+    def _extract_list_response(cls, data, key: str) -> list:
+        return cls._normalize_list_container(data, key).get(key) or []
+
+    @staticmethod
+    def _normalize_object_response(data, response_name: str) -> dict:
+        if isinstance(data, dict):
+            return data
+        raise LLMResponseError(
+            f"LLM вернула JSON неверного формата для {response_name}: ожидался объект, получен {type(data).__name__}."
+        )
+
+    @classmethod
+    def _normalize_list_container(cls, data, key: str) -> dict:
+        if isinstance(data, dict):
+            value = data.get(key)
+            if value is None:
+                return {**data, key: []}
+            if isinstance(value, list):
+                return data
+            raise LLMResponseError(
+                f"LLM вернула JSON неверного формата: поле {key} должно быть массивом."
+            )
+        if isinstance(data, list):
+            return {key: data}
+        return cls._normalize_object_response(data, key)
 
     @staticmethod
     def _decimal(value) -> Decimal:
@@ -507,3 +581,34 @@ class CoursePipeline:
     def _source_from_url(url: str) -> str:
         host = urlparse(url).netloc.lower().replace("www.", "")
         return host or "web"
+
+    @staticmethod
+    def _truncate(value, limit: int) -> str:
+        text = str(value or "").strip()
+        if len(text) <= limit:
+            return text
+        return text[: limit - 1].rstrip() + "…"
+
+    @classmethod
+    def _compact_json(cls, value, limit: int) -> str:
+        text = json.dumps({} if value is None else value, ensure_ascii=False, separators=(",", ":"), default=str)
+        return cls._truncate(text, limit)
+
+    @staticmethod
+    def _prioritize_candidates(candidates: list[dict]) -> list[dict]:
+        videos = [
+            candidate
+            for candidate in candidates
+            if candidate.get("material_kind") == WebSearchProfile.MaterialKind.VIDEO
+        ]
+        texts = [
+            candidate
+            for candidate in candidates
+            if candidate.get("material_kind") != WebSearchProfile.MaterialKind.VIDEO
+        ]
+        prioritized = []
+        for pair in zip(videos, texts):
+            prioritized.extend(pair)
+        prioritized.extend(videos[len(texts) :])
+        prioritized.extend(texts[len(videos) :])
+        return prioritized

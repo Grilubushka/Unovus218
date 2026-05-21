@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     "unfold.contrib.forms",
     "unfold.contrib.inlines",
     "unfold.contrib.import_export",
+    "rest_framework",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -81,6 +82,14 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_PERMISSION_CLASSES": [],
+}
 
 UNFOLD = {
     "SITE_TITLE": "RouteCraft Admin",

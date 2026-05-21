@@ -13,7 +13,7 @@ class LLMResponseError(RuntimeError):
     pass
 
 
-def extract_json_from_text(text: str) -> dict:
+def extract_json_from_text(text: str):
     """
     Пытается распарсить:
     1. чистый JSON;
@@ -31,9 +31,9 @@ def extract_json_from_text(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # 2. Markdown fenced code block
+    # 2. Markdown fenced code block with object or array
     fence_match = re.search(
-        r"```(?:json)?\s*(\{.*?\})\s*```",
+        r"```(?:json)?\s*([\[{].*?[\]}])\s*```",
         cleaned,
         flags=re.DOTALL | re.IGNORECASE,
     )
@@ -43,9 +43,18 @@ def extract_json_from_text(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # 3. Первый JSON-объект в тексте
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
+    # 3. Первый JSON-объект или массив в тексте
+    object_start = cleaned.find("{")
+    array_start = cleaned.find("[")
+    starts = [index for index in (object_start, array_start) if index != -1]
+    if starts:
+        start = min(starts)
+        end_char = "}" if cleaned[start] == "{" else "]"
+        end = cleaned.rfind(end_char)
+        if end <= start:
+            end = -1
+    else:
+        start = end = -1
     if start != -1 and end != -1 and end > start:
         candidate = cleaned[start : end + 1]
         try:
@@ -91,13 +100,17 @@ class ResponsesLLMClient:
         client = OpenAI(**client_kwargs)
 
         if purpose == "chat" and not payload.get("tools"):
+            response_format = payload.get("response_format") or {"type": "json_object"}
             return client.chat.completions.create(
                 model=payload["model"],
-                messages=[{"role": "user", "content": payload["input"]}],
+                messages=[
+                    {"role": "system", "content": "Return only valid json. Do not include markdown or prose."},
+                    {"role": "user", "content": payload["input"]},
+                ],
                 temperature=payload.get("temperature"),
                 top_p=payload.get("top_p"),
                 max_tokens=payload.get("max_output_tokens"),
-                response_format=payload.get("response_format"),
+                response_format=response_format,
             )
 
         return client.responses.create(**payload)
@@ -150,8 +163,7 @@ class ResponsesLLMClient:
         print("=" * 80 + "\n", flush=True)
 
         try:
-            text = normalize_llm_json_text(text)
-            return json.loads(text) 
+            return extract_json_from_text(text)
         except json.JSONDecodeError as exc:
             print("\n" + "=" * 80)
             print("[LLM DEBUG] JSON PARSE ERROR:")

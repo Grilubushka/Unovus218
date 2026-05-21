@@ -23,7 +23,10 @@ export class RoadmapRepository {
 export class ApiRoadmapRepository {
   async getRoadmap(telegramUserId) {
     const query = telegramUserId ? `?telegram_user_id=${encodeURIComponent(telegramUserId)}` : "";
-    const response = await fetch(`/api/roadmap${query}`, { cache: "no-store" });
+    const response = await fetch(apiUrl(`/roadmap${query}`), {
+      cache: "no-store",
+      headers: telegramHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Roadmap API failed: ${response.status}`);
     }
@@ -32,16 +35,16 @@ export class ApiRoadmapRepository {
   }
 
   async markModule({ courseId, moduleIndex, telegramUserId }) {
-    return postJson("/api/progress/mark", { courseId, moduleIndex, telegramUserId });
+    return postJson("/progress/mark", { courseId, moduleIndex, telegramUserId });
   }
 
   async saveFeedback({ courseId, moduleIndex, feedback, telegramUserId }) {
-    return postJson("/api/feedback", { courseId, moduleIndex, feedback, telegramUserId });
+    return postJson("/feedback", { courseId, moduleIndex, feedback, telegramUserId });
   }
 
   async uploadCertificate({ file, telegramUserId }) {
     const dataUrl = await fileToDataUrl(file);
-    const result = await postJson("/api/certificates/upload", {
+    const result = await postJson("/certificates/upload", {
       telegramUserId,
       title: file.name,
       fileName: file.name,
@@ -54,15 +57,26 @@ export class ApiRoadmapRepository {
 }
 
 async function postJson(url, payload) {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...telegramHeaders() },
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error(`${url} failed: ${response.status}`);
   }
   return response.json();
+}
+
+function apiUrl(path) {
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
+function telegramHeaders() {
+  const initData = window.Telegram?.WebApp?.initData;
+  return initData ? { "X-Telegram-Init-Data": initData } : {};
 }
 
 function fileToDataUrl(file) {

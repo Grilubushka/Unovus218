@@ -1,7 +1,10 @@
+import json
 import threading
 import time
 from datetime import datetime, timezone
 from html import escape
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from bot.application.onboarding_adaptation import (
     CompletionAdaptation,
@@ -453,6 +456,7 @@ def complete_onboarding(
         payload=admin_payload,
         session_id=session_id,
     )
+    submit_admin_onboarding_payload_async(settings, admin_payload)
     user["profile"] = profile
     user["active_route_id"] = course_id
     user["active_route_user_id"] = user_id
@@ -773,6 +777,42 @@ def create_llm_client(settings: Settings) -> LlmAgentClient | None:
         timeout=settings.llm_agent_timeout,
         max_tokens=settings.llm_agent_max_tokens,
     )
+
+
+def submit_admin_onboarding_payload_async(settings: Settings, payload: dict) -> None:
+    if not settings.admin_api_base_url:
+        return
+    thread = threading.Thread(
+        target=submit_admin_onboarding_payload,
+        args=(settings, payload),
+        daemon=True,
+    )
+    thread.start()
+
+
+def submit_admin_onboarding_payload(settings: Settings, payload: dict) -> None:
+    if not settings.admin_api_base_url:
+        return
+    if not settings.admin_api_token:
+        print("ADMIN_API_BASE_URL is set, but ADMIN_API_TOKEN is empty; skipping Django onboarding submit.")
+        return
+
+    url = f"{settings.admin_api_base_url}/api/onboarding/complete"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib_request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.admin_api_token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=settings.admin_api_timeout) as response:
+            response.read()
+    except (urllib_error.URLError, TimeoutError, OSError) as error:
+        print(f"Failed to submit onboarding payload to Django admin API: {error}")
 
 
 def handle_routes_callback(

@@ -34,6 +34,9 @@ class Settings:
         self.llm_agent_timeout = parse_float(os.environ.get("LLM_AGENT_TIMEOUT"), 0.0)
         self.llm_agent_max_tokens = parse_int(os.environ.get("LLM_AGENT_MAX_TOKENS"), 500)
         self.llm_agent_progress_interval = parse_float(os.environ.get("LLM_AGENT_PROGRESS_INTERVAL"), 2.0)
+        self.admin_api_base_url = os.environ.get("ADMIN_API_BASE_URL", "").rstrip("/")
+        self.admin_api_token = os.environ.get("ADMIN_API_TOKEN", "")
+        self.admin_api_timeout = parse_float(os.environ.get("ADMIN_API_TIMEOUT"), 300.0)
 
     def validate(self) -> None:
         if not self.bot_token:
